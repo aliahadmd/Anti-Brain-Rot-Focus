@@ -1,0 +1,93 @@
+body {
+  margin: 0;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(135deg, #FF6B6B 0%, #556270 100%); /* Energetic but serious */
+  color: white;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  text-align: center;
+  overflow: hidden;
+}
+
+.content {
+  z-index: 10;
+  padding: 40px;
+  max-width: 90%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.icon {
+  font-size: 5em;
+  margin-bottom: 20px;
+  animation: bounce 2s infinite;
+}
+
+h1 {
+  font-size: 5em;
+  margin: 0 0 20px 0;
+  text-shadow: 2px 2px 10px rgba(0,0,0,0.5);
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: -1px;
+}
+
+.subtitle {
+  font-size: 1.8em;
+  opacity: 0.9;
+  font-weight: 300;
+  margin-bottom: 40px;
+}
+
+.fade-in {
+  animation: fadeIn 1s ease-out forwards;
+  opacity: 0;
+}
+
+h1.fade-in { animation-delay: 0.2s; }
+.subtitle.fade-in { animation-delay: 0.5s; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes bounce {
+  0%, 20%, 50%, 80%, 100% {transform: translateY(0);}
+  40% {transform: translateY(-20px);}
+  60% {transform: translateY(-10px);}
+}
+
+.settings-link {
+  color: rgba(255,255,255,0.6);
+  text-decoration: none;
+  font-size: 1rem;
+  margin-top: 40px;
+  border-bottom: 1px dotted rgba(255,255,255,0.4);
+  transition: all 0.3s;
+}
+
+.settings-link:hover {
+  color: white;
+  border-bottom-style: solid;
+}
+
+/* Background pulse */
+.pulse-circle {
+  position: absolute;
+  width: 600px;
+  height: 600px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 50%;
+  z-index: -1;
+  animation: pulse 4s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(0.8); opacity: 0.5; }
+  50% { transform: scale(1.2); opacity: 0.2; }
+  100% { transform: scale(0.8); opacity: 0.5; }
+}
