@@ -1,93 +1,166 @@
+:root {
+  color-scheme: light;
+  --bg: #f7f8fb;
+  --text: #172033;
+  --muted: #607086;
+  --line: #dbe3ec;
+  --teal: #0f766e;
+  --teal-dark: #115e59;
+  --amber: #a16207;
+}
+
+* {
+  box-sizing: border-box;
+}
+
 body {
+  min-height: 100vh;
   margin: 0;
-  height: 100vh;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  background: linear-gradient(135deg, #FF6B6B 0%, #556270 100%); /* Energetic but serious */
-  color: white;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background:
+    linear-gradient(135deg, rgba(15, 118, 110, 0.13), transparent 36%),
+    linear-gradient(315deg, rgba(161, 98, 7, 0.16), transparent 34%),
+    var(--bg);
+  color: var(--text);
+  font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
   text-align: center;
-  overflow: hidden;
 }
 
 .content {
-  z-index: 10;
-  padding: 40px;
-  max-width: 90%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  width: min(720px, 100%);
+  padding: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 24px 70px rgba(23, 32, 51, 0.12);
 }
 
-.icon {
-  font-size: 5em;
-  margin-bottom: 20px;
-  animation: bounce 2s infinite;
+.logo {
+  width: 72px;
+  height: 72px;
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(23, 32, 51, 0.16);
+}
+
+.eyebrow {
+  margin: 22px 0 10px;
+  color: var(--teal);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
 }
 
 h1 {
-  font-size: 5em;
-  margin: 0 0 20px 0;
-  text-shadow: 2px 2px 10px rgba(0,0,0,0.5);
-  line-height: 1.1;
-  font-weight: 800;
-  letter-spacing: -1px;
+  margin: 0;
+  color: #111827;
+  font-size: 42px;
+  line-height: 1.12;
+  overflow-wrap: anywhere;
 }
 
 .subtitle {
-  font-size: 1.8em;
-  opacity: 0.9;
-  font-weight: 300;
-  margin-bottom: 40px;
+  margin: 18px auto 0;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.5;
 }
 
-.fade-in {
-  animation: fadeIn 1s ease-out forwards;
-  opacity: 0;
+.save-count {
+  margin: 24px auto 0;
+  color: #334155;
+  font-size: 15px;
 }
 
-h1.fade-in { animation-delay: 0.2s; }
-.subtitle.fade-in { animation-delay: 0.5s; }
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(30px); }
-  to { opacity: 1; transform: translateY(0); }
+.save-count span {
+  color: var(--amber);
+  font-weight: 850;
 }
 
-@keyframes bounce {
-  0%, 20%, 50%, 80%, 100% {transform: translateY(0);}
-  40% {transform: translateY(-20px);}
-  60% {transform: translateY(-10px);}
+.actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 28px;
 }
 
-.settings-link {
-  color: rgba(255,255,255,0.6);
-  text-decoration: none;
-  font-size: 1rem;
-  margin-top: 40px;
-  border-bottom: 1px dotted rgba(255,255,255,0.4);
-  transition: all 0.3s;
+button {
+  min-width: 120px;
+  min-height: 42px;
+  padding: 0 18px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
 }
 
-.settings-link:hover {
-  color: white;
-  border-bottom-style: solid;
+button:active {
+  transform: translateY(1px);
 }
 
-/* Background pulse */
-.pulse-circle {
-  position: absolute;
-  width: 600px;
-  height: 600px;
-  background: rgba(255,255,255,0.05);
-  border-radius: 50%;
-  z-index: -1;
-  animation: pulse 4s infinite;
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
 }
 
-@keyframes pulse {
-  0% { transform: scale(0.8); opacity: 0.5; }
-  50% { transform: scale(1.2); opacity: 0.2; }
-  100% { transform: scale(0.8); opacity: 0.5; }
+.primary-btn {
+  border: 0;
+  background: var(--teal);
+  color: #ffffff;
+}
+
+.primary-btn:hover {
+  background: var(--teal-dark);
+}
+
+.secondary-btn {
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+}
+
+.secondary-btn:hover {
+  border-color: #94a3b8;
+  background: #f1f5f9;
+}
+
+.action-status {
+  min-height: 22px;
+  margin: 18px 0 0;
+  color: var(--teal);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+@media (max-width: 560px) {
+  body {
+    padding: 16px;
+  }
+
+  .content {
+    padding: 28px 18px;
+  }
+
+  h1 {
+    font-size: 30px;
+  }
+
+  .subtitle {
+    font-size: 16px;
+  }
+
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  button {
+    width: 100%;
+  }
 }

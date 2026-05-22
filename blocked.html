@@ -6,15 +6,19 @@
   <link rel="stylesheet" href="blocked.css">
 </head>
 <body>
-  <div class="content">
-    <div class="icon">🚫</div>
-    <h1 id="motivation" class="fade-in">Focus!</h1>
-    <p id="target" class="subtitle fade-in"></p>
-    <div class="animation-container">
-      <div class="pulse-circle"></div>
+  <main class="content">
+    <img src="icons/icon128.png" alt="" class="logo">
+    <p class="eyebrow">Focus intercepted</p>
+    <h1 id="motivation">Stay focused.</h1>
+    <p id="target" class="subtitle"></p>
+    <p class="save-count"><span id="totalCount">0</span> distractions redirected so far</p>
+    <div class="actions">
+      <button id="closeTabBtn" class="primary-btn" type="button">Close Tab</button>
+      <button id="pauseBtn" class="secondary-btn" type="button">Pause 5m</button>
+      <button id="optionsLink" class="secondary-btn" type="button">Settings</button>
     </div>
-    <a href="#" id="optionsLink" class="settings-link">Adjust Settings</a>
-  </div>
+    <p id="actionStatus" class="action-status" aria-live="polite"></p>
+  </main>
   <script src="blocked.js"></script>
 </body>
 </html>

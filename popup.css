@@ -1,0 +1,153 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  width: 280px;
+  margin: 0;
+  padding: 16px;
+  background: #f8fafc;
+  color: #172033;
+  font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+.popup-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  box-shadow: 0 6px 16px rgba(23, 32, 51, 0.14);
+}
+
+h1 {
+  margin: 0;
+  color: #111827;
+  font-size: 18px;
+  font-weight: 750;
+}
+
+.status {
+  margin: 3px 0 0;
+  color: #526071;
+  font-size: 13px;
+}
+
+.status strong {
+  color: #0f766e;
+}
+
+.status.off strong {
+  color: #b42318;
+}
+
+.status.paused strong {
+  color: #a16207;
+}
+
+.snapshot {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.snapshot div {
+  padding: 10px;
+  border: 1px solid #dbe3ec;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.snapshot span {
+  display: block;
+  color: #111827;
+  font-size: 22px;
+  font-weight: 750;
+  line-height: 1;
+}
+
+.snapshot small {
+  display: block;
+  margin-top: 5px;
+  color: #64748b;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+button {
+  width: 100%;
+  min-height: 38px;
+  border: 0;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+}
+
+.primary-btn {
+  background: #0f766e;
+  color: #ffffff;
+}
+
+.primary-btn:hover {
+  background: #115e59;
+}
+
+.primary-btn.off {
+  background: #b42318;
+}
+
+.primary-btn.off:hover {
+  background: #912018;
+}
+
+.pause-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.ghost-btn {
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+}
+
+.ghost-btn:hover {
+  border-color: #94a3b8;
+  background: #f1f5f9;
+}
+
+.ghost-btn[hidden] {
+  display: none;
+}
+
+.link-btn {
+  margin-top: 12px;
+  background: transparent;
+  color: #475569;
+}
+
+.link-btn:hover {
+  background: #e2e8f0;
+  color: #111827;
+}

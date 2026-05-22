@@ -1,22 +1,53 @@
+const DEFAULT_MOTIVATION = 'You came here to focus. Take a breath, choose the next useful action, and keep going.';
+
 document.addEventListener('DOMContentLoaded', () => {
   const params = new URLSearchParams(window.location.search);
   const target = params.get('target');
-  
+  const targetEl = document.getElementById('target');
+  const motivationEl = document.getElementById('motivation');
+  const totalCountEl = document.getElementById('totalCount');
+  const closeTabBtn = document.getElementById('closeTabBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const optionsLink = document.getElementById('optionsLink');
+  const actionStatus = document.getElementById('actionStatus');
+
   if (target) {
-    document.getElementById('target').textContent = `You tried to visit ${target}`;
+    targetEl.textContent = `${target} is on your blocked list.`;
   } else {
-    document.getElementById('target').style.display = 'none';
+    targetEl.textContent = 'This site is on your blocked list.';
   }
 
-  chrome.storage.local.get("motivationalText", (data) => {
-    const text = data.motivationalText || "Don't let the brain rot consume you! Stay focused and build your future.";
-    document.getElementById('motivation').textContent = text;
+  chrome.storage.local.get(['motivationalText', 'stats'], (data) => {
+    motivationEl.textContent = data.motivationalText || DEFAULT_MOTIVATION;
+    totalCountEl.textContent = (data.stats && data.stats.total) || 0;
   });
 
-  document.getElementById('optionsLink').addEventListener('click', (e) => {
-    e.preventDefault();
+  closeTabBtn.addEventListener('click', () => {
+    chrome.tabs.getCurrent((tab) => {
+      if (tab && Number.isInteger(tab.id)) {
+        chrome.tabs.remove(tab.id);
+        return;
+      }
+
+      window.close();
+    });
+  });
+
+  pauseBtn.addEventListener('click', () => {
+    chrome.storage.local.set({
+      isEnabled: true,
+      pausedUntil: Date.now() + 5 * 60000
+    }, () => {
+      actionStatus.textContent = 'Focus is paused for 5 minutes.';
+      pauseBtn.disabled = true;
+    });
+  });
+
+  optionsLink.addEventListener('click', () => {
     if (chrome.runtime.openOptionsPage) {
       chrome.runtime.openOptionsPage();
+    } else {
+      window.open(chrome.runtime.getURL('options.html'));
     }
   });
 });

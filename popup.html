@@ -2,22 +2,37 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <style>
-    body { width: 200px; padding: 15px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; background-color: #f9f9f9; }
-    h2 { margin: 0 0 10px 0; font-size: 16px; color: #333; }
-    button { padding: 10px 15px; margin-top: 10px; cursor: pointer; width: 100%; border: none; border-radius: 5px; font-weight: bold; transition: background 0.3s; }
-    .status { margin-bottom: 15px; font-size: 14px; }
-    .off { color: #d9534f; }
-    .on { color: #5cb85c; }
-    .link { display: block; margin-top: 15px; color: #666; text-decoration: none; font-size: 12px; transition: color 0.3s; }
-    .link:hover { color: #000; text-decoration: underline; }
-  </style>
+  <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <h2>Anti-Brain Rot</h2>
-  <div id="status" class="status">Loading...</div>
-  <button id="toggleBtn">Toggle</button>
-  <a href="#" id="optionsLink" class="link">⚙️ Dashboard & Settings</a>
+  <header class="popup-header">
+    <img src="icons/icon48.png" alt="" class="logo">
+    <div>
+      <h1>Focus</h1>
+      <p id="status" class="status">Loading...</p>
+    </div>
+  </header>
+
+  <section class="snapshot" aria-label="Focus snapshot">
+    <div>
+      <span id="totalCount">0</span>
+      <small>saves</small>
+    </div>
+    <div>
+      <span id="siteCount">0</span>
+      <small>blocked</small>
+    </div>
+  </section>
+
+  <button id="toggleBtn" class="primary-btn" type="button">Toggle Focus</button>
+
+  <div class="pause-row" aria-label="Pause focus">
+    <button class="ghost-btn pause-btn" type="button" data-minutes="15">15m</button>
+    <button class="ghost-btn pause-btn" type="button" data-minutes="60">1h</button>
+    <button id="resumeBtn" class="ghost-btn" type="button">Resume</button>
+  </div>
+
+  <button id="optionsLink" class="link-btn" type="button">Dashboard & Settings</button>
   <script src="popup.js"></script>
 </body>
 </html>
