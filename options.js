@@ -331,6 +331,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const thirtyDayTrackFill = document.getElementById('thirtyDayTrackFill');
   const pausePenaltyList = document.getElementById('pausePenaltyList');
   const earnedMedalsGrid = document.getElementById('earnedMedalsGrid');
+  const medalCatalogCount = document.getElementById('medalCatalogCount');
+  const medalCatalogList = document.getElementById('medalCatalogList');
   const blockedCountEl = document.getElementById('blockedCount');
   const topDistractionsEl = document.getElementById('topDistractions');
   const dailyChartEl = document.getElementById('dailyChart');
@@ -654,6 +656,66 @@ document.addEventListener('DOMContentLoaded', () => {
     }, true));
   }
 
+  function renderMedalCatalog() {
+    const catalogGroups = [
+      {
+        title: 'Every 10 Focus Days',
+        summary: `${MEDAL_NAMES_10.length} regular medal styles`,
+        type: 'focus',
+        interval: 10,
+        names: MEDAL_NAMES_10
+      },
+      {
+        title: 'Every 30 Focus Days',
+        summary: `${MEDAL_NAMES_30.length} prestige medal styles`,
+        type: 'prestige',
+        interval: 30,
+        names: MEDAL_NAMES_30
+      }
+    ];
+
+    medalCatalogCount.textContent = `${MEDAL_NAMES_10.length + MEDAL_NAMES_30.length} medal styles`;
+    medalCatalogList.textContent = '';
+
+    catalogGroups.forEach((group) => {
+      const article = document.createElement('article');
+      const header = document.createElement('div');
+      const title = document.createElement('h3');
+      const summary = document.createElement('span');
+      const list = document.createElement('ol');
+
+      article.className = `medal-catalog-group ${group.type === 'prestige' ? 'prestige' : 'focus'}`;
+      header.className = 'medal-catalog-head';
+      title.textContent = group.title;
+      summary.textContent = group.summary;
+      list.className = 'medal-name-list';
+
+      group.names.forEach((name, index) => {
+        const item = document.createElement('li');
+        const icon = document.createElement('span');
+        const detail = document.createElement('span');
+        const medalName = document.createElement('strong');
+        const threshold = document.createElement('small');
+        const firstThreshold = group.interval * (index + 1);
+
+        icon.className = 'catalog-medal-icon';
+        icon.textContent = group.type === 'prestige'
+          ? MEDAL_GLYPHS_30[index % MEDAL_GLYPHS_30.length]
+          : MEDAL_GLYPHS_10[index % MEDAL_GLYPHS_10.length];
+        medalName.textContent = name;
+        threshold.textContent = `First appears at ${firstThreshold} focus days`;
+
+        detail.append(medalName, threshold);
+        item.append(icon, detail);
+        list.appendChild(item);
+      });
+
+      header.append(title, summary);
+      article.append(header, list);
+      medalCatalogList.appendChild(article);
+    });
+  }
+
   function renderRewards(rawRewardState) {
     const rewardState = normalizeRewardState(rawRewardState);
     const progressDays = rewardState.progressDays;
@@ -683,6 +745,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     renderPenaltyList(rewardState.pauseEvents);
     renderEarnedMedals(rewardState.earnedMedals, progressDays);
+    renderMedalCatalog();
   }
 
   function renderDashboard(data) {

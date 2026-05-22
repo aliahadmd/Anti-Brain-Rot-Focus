@@ -804,6 +804,112 @@ select:focus {
   box-shadow: none;
 }
 
+.medal-catalog-section .section-header {
+  align-items: flex-start;
+}
+
+.medal-catalog-copy {
+  max-width: 720px;
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.medal-count-pill {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border: 1px solid rgba(15, 118, 110, 0.18);
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.1);
+  color: var(--teal);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.medal-catalog-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.medal-catalog-group {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.medal-catalog-head {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.medal-catalog-head h3 {
+  margin: 0;
+  color: #111827;
+  font-size: 16px;
+}
+
+.medal-catalog-head span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.medal-name-list {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.medal-name-list li {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid rgba(203, 213, 225, 0.8);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.catalog-medal-icon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #06b6d4, #14b8a6, #84cc16);
+  color: #ffffff;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.medal-catalog-group.prestige .catalog-medal-icon {
+  background: linear-gradient(135deg, #7c3aed, #ec4899, #f59e0b);
+}
+
+.medal-name-list strong,
+.medal-name-list small {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.medal-name-list strong {
+  color: #111827;
+  font-size: 14px;
+}
+
+.medal-name-list small {
+  margin-top: 3px;
+  color: var(--muted);
+}
+
 .penalty-list {
   display: grid;
   gap: 10px;
@@ -974,6 +1080,7 @@ select:focus {
   .stats-grid,
   .analytics-summary,
   .panel-grid,
+  .medal-catalog-list,
   .reward-hero,
   .management-grid {
     grid-template-columns: 1fr;
