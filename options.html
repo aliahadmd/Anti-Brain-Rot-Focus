@@ -6,89 +6,279 @@
   <link rel="stylesheet" href="options.css">
 </head>
 <body>
-  <main class="container">
-    <header class="page-header">
-      <div class="brand">
+  <main class="app-shell">
+    <aside class="sidebar" aria-label="Dashboard sections">
+      <div class="sidebar-brand">
         <img src="icons/icon48.png" alt="" class="brand-icon">
         <div>
-          <p class="eyebrow">Anti-Brain Rot Focus</p>
-          <h1>Focus Dashboard</h1>
+          <span>Anti-Brain Rot</span>
+          <strong>Focus</strong>
         </div>
       </div>
-      <div class="focus-state" aria-live="polite">
+      <nav class="sidebar-nav">
+        <button class="nav-btn active" type="button" data-section="overview">Overview</button>
+        <button class="nav-btn" type="button" data-section="analytics">Analytics</button>
+        <button class="nav-btn" type="button" data-section="rewards">Rewards</button>
+        <button class="nav-btn" type="button" data-section="sites">Blocked Sites</button>
+        <button class="nav-btn" type="button" data-section="settings">Settings</button>
+      </nav>
+      <div class="sidebar-status">
         <span id="focusState">Loading</span>
         <small id="pauseStatus"></small>
       </div>
-    </header>
+    </aside>
 
-    <section class="stats-grid" aria-label="Focus statistics">
-      <article class="stat-card">
-        <span class="label">Total Saves</span>
-        <strong id="totalCount">0</strong>
-        <small>redirected attempts</small>
-      </article>
-      <article class="stat-card">
-        <span class="label">Blocked Sites</span>
-        <strong id="blockedCount">0</strong>
-        <small>domains and subdomains</small>
-      </article>
-      <article class="stat-card list-card">
-        <div class="card-head">
-          <span class="label">Top Distractions</span>
-          <button id="resetStatsBtn" class="text-btn" type="button">Reset</button>
+    <section class="workspace">
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">Dashboard & Settings</p>
+          <h1 id="pageTitle">Overview</h1>
         </div>
-        <ol id="topDistractions"></ol>
-      </article>
-    </section>
+        <button id="exportBtn" class="secondary-btn" type="button">Export Blocklist</button>
+      </header>
 
-    <section class="section">
-      <div class="section-header">
-        <h2>Focus Controls</h2>
-      </div>
-      <div class="control-row">
-        <label class="switch">
-          <input type="checkbox" id="enabledToggle">
-          <span class="switch-track" aria-hidden="true"></span>
-          <span>Blocking enabled</span>
-        </label>
-        <button id="resumeFocusBtn" class="secondary-btn" type="button">Clear Pause</button>
-      </div>
-    </section>
+      <section id="overviewPanel" class="dashboard-panel" data-panel="overview">
+        <div class="stats-grid" aria-label="Focus statistics">
+          <article class="stat-card">
+            <span class="label">Total Saves</span>
+            <strong id="totalCount">0</strong>
+            <small>redirected attempts</small>
+          </article>
+          <article class="stat-card">
+            <span class="label">Today</span>
+            <strong id="todayCount">0</strong>
+            <small>redirects blocked</small>
+          </article>
+          <article class="stat-card">
+            <span class="label">Blocked Sites</span>
+            <strong id="blockedCount">0</strong>
+            <small>domains and subdomains</small>
+          </article>
+          <article class="stat-card reward-mini-card">
+            <span class="label">Reward Progress</span>
+            <div class="mini-medal" aria-hidden="true">✦</div>
+            <strong id="overviewRewardDays">0</strong>
+            <small id="overviewRewardNext">10 days to Neon Spark</small>
+          </article>
+        </div>
 
-    <section class="section">
-      <div class="section-header">
-        <h2>Blocked Page Message</h2>
-      </div>
-      <div class="form-group">
-        <label for="motivationText">Message</label>
-        <textarea id="motivationText" rows="4"></textarea>
-        <div class="actions-row">
-          <button id="saveTextBtn" class="primary-btn" type="button">Save Message</button>
-          <span id="saveStatus" class="feedback" aria-live="polite"></span>
-        </div>
-      </div>
-    </section>
+        <div class="panel-grid">
+          <section class="section">
+            <div class="section-header">
+              <h2>Top Distractions</h2>
+              <button id="resetStatsBtn" class="text-btn" type="button">Reset Stats</button>
+            </div>
+            <ol id="topDistractions" class="rank-list"></ol>
+          </section>
 
-    <section class="section">
-      <div class="section-header">
-        <h2>Blocked Sites</h2>
-      </div>
-      <div class="form-group">
-        <label for="newSite">Add a domain</label>
-        <div class="add-site">
-          <input type="text" id="newSite" placeholder="example.com">
-          <button id="addSiteBtn" class="primary-btn" type="button">Add</button>
+          <section class="section">
+            <div class="section-header">
+              <h2>Focus Controls</h2>
+            </div>
+            <div class="control-row">
+              <label class="switch">
+                <input type="checkbox" id="enabledToggle">
+                <span class="switch-track" aria-hidden="true"></span>
+                <span>Blocking enabled</span>
+              </label>
+              <button id="resumeFocusBtn" class="secondary-btn" type="button">Clear Pause</button>
+            </div>
+          </section>
         </div>
-        <p id="siteFeedback" class="feedback" aria-live="polite"></p>
-        <div class="preset-row" aria-label="Preset blocklists">
-          <button class="preset-btn" type="button" data-sites="youtube.com,tiktok.com,instagram.com,x.com,twitter.com,facebook.com,reddit.com">Social</button>
-          <button class="preset-btn" type="button" data-sites="netflix.com,hulu.com,disneyplus.com,twitch.tv">Streaming</button>
-          <button class="preset-btn" type="button" data-sites="amazon.com,ebay.com,etsy.com">Shopping</button>
+      </section>
+
+      <section id="analyticsPanel" class="dashboard-panel" data-panel="analytics" hidden>
+        <p id="analyticsTimeStatus" class="time-status"></p>
+        <div class="stats-grid analytics-summary" aria-label="Analytics summary">
+          <article class="stat-card">
+            <span class="label">Today</span>
+            <strong id="analyticsTodayCount">0</strong>
+            <small>redirects blocked</small>
+          </article>
+          <article class="stat-card">
+            <span class="label">Last 7 Days</span>
+            <strong id="weekCount">0</strong>
+            <small>aggregate saves</small>
+          </article>
+          <article class="stat-card">
+            <span class="label">All Time</span>
+            <strong id="analyticsAllTimeCount">0</strong>
+            <small>total redirects</small>
+          </article>
         </div>
-        <ul id="siteList" class="site-list"></ul>
-      </div>
+
+        <section class="section">
+          <div class="section-header">
+            <h2>14-Day Trend</h2>
+          </div>
+          <div id="dailyChart" class="daily-chart" aria-label="14-day redirect chart"></div>
+        </section>
+
+        <section class="section">
+          <div class="section-header">
+            <h2>Top Site Breakdown</h2>
+          </div>
+          <div id="topSiteBars" class="site-bars" aria-label="Top blocked site counts"></div>
+        </section>
+      </section>
+
+      <section id="rewardsPanel" class="dashboard-panel" data-panel="rewards" hidden>
+        <div class="stats-grid rewards-summary" aria-label="Reward summary">
+          <article class="stat-card">
+            <span class="label">Progress Days</span>
+            <strong id="rewardProgressDays">0</strong>
+            <small>after pause penalties</small>
+          </article>
+          <article class="stat-card">
+            <span class="label">Earned Medals</span>
+            <strong id="earnedMedalCount">0</strong>
+            <small>never removed by penalties</small>
+          </article>
+          <article class="stat-card">
+            <span class="label">Next Prestige</span>
+            <strong id="nextPrestigeDays">30</strong>
+            <small id="nextPrestigeName">days to Chrono Phoenix</small>
+          </article>
+        </div>
+
+        <section class="section reward-hero">
+          <div>
+            <p class="eyebrow">Medal Quest</p>
+            <h2 id="nextMedalTitle">Neon Spark awaits</h2>
+            <p id="nextMedalCopy" class="muted-copy">Protect your focus days to unlock your next medal.</p>
+          </div>
+          <div class="next-medal-card">
+            <div id="nextMedalIcon" class="medal-icon medal-locked" aria-hidden="true">✦</div>
+            <span id="nextMedalType">10-day medal</span>
+          </div>
+        </section>
+
+        <div class="panel-grid reward-panel-grid">
+          <section class="section">
+            <div class="section-header">
+              <h2>Award Tracks</h2>
+            </div>
+            <div class="reward-track">
+              <div class="track-head">
+                <span id="tenDayTrackName">Neon Spark</span>
+                <strong id="tenDayTrackLabel">0 / 10</strong>
+              </div>
+              <div class="reward-meter" aria-label="10-day medal progress">
+                <span id="tenDayTrackFill"></span>
+              </div>
+            </div>
+            <div class="reward-track prestige">
+              <div class="track-head">
+                <span id="thirtyDayTrackName">Chrono Phoenix</span>
+                <strong id="thirtyDayTrackLabel">0 / 30</strong>
+              </div>
+              <div class="reward-meter" aria-label="30-day prestige medal progress">
+                <span id="thirtyDayTrackFill"></span>
+              </div>
+            </div>
+          </section>
+
+          <section class="section">
+            <div class="section-header">
+              <h2>Recent Penalties</h2>
+            </div>
+            <ul id="pausePenaltyList" class="penalty-list"></ul>
+          </section>
+        </div>
+
+        <section class="section">
+          <div class="section-header">
+            <h2>Earned Medals</h2>
+          </div>
+          <div id="earnedMedalsGrid" class="medal-grid"></div>
+        </section>
+      </section>
+
+      <section id="sitesPanel" class="dashboard-panel" data-panel="sites" hidden>
+        <section class="section">
+          <div class="section-header">
+            <h2>Blocked Sites</h2>
+            <div class="site-actions">
+              <button id="importBtn" class="secondary-btn" type="button">Import</button>
+              <input id="importFile" type="file" accept="application/json,.json" hidden>
+            </div>
+          </div>
+
+          <div class="management-grid">
+            <div class="form-group">
+              <label for="newSite">Add a domain</label>
+              <div class="add-site">
+                <input type="text" id="newSite" placeholder="example.com">
+                <button id="addSiteBtn" class="primary-btn" type="button">Add</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="siteSearch">Search</label>
+              <input type="search" id="siteSearch" placeholder="Filter blocked sites">
+            </div>
+            <div class="form-group">
+              <label for="siteSort">Sort</label>
+              <select id="siteSort">
+                <option value="nameAsc">Name A-Z</option>
+                <option value="nameDesc">Name Z-A</option>
+                <option value="mostBlocked">Most blocked</option>
+                <option value="leastBlocked">Least blocked</option>
+              </select>
+            </div>
+          </div>
+
+          <p id="siteFeedback" class="feedback" aria-live="polite"></p>
+          <div class="preset-row" aria-label="Preset blocklists">
+            <button class="preset-btn" type="button" data-sites="youtube.com,tiktok.com,instagram.com,x.com,twitter.com,facebook.com,reddit.com">Social</button>
+            <button class="preset-btn" type="button" data-sites="netflix.com,hulu.com,disneyplus.com,twitch.tv">Streaming</button>
+            <button class="preset-btn" type="button" data-sites="amazon.com,ebay.com,etsy.com">Shopping</button>
+          </div>
+          <ul id="siteList" class="site-list"></ul>
+        </section>
+      </section>
+
+      <section id="settingsPanel" class="dashboard-panel" data-panel="settings" hidden>
+        <section class="section">
+          <div class="section-header">
+            <h2>Blocked Page Message</h2>
+          </div>
+          <div class="form-group">
+            <label for="motivationText">Message</label>
+            <textarea id="motivationText" rows="4"></textarea>
+            <div class="actions-row">
+              <button id="saveTextBtn" class="primary-btn" type="button">Save Message</button>
+              <span id="saveStatus" class="feedback" aria-live="polite"></span>
+            </div>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-header">
+            <h2>Data Management</h2>
+          </div>
+          <p class="muted-copy">Statistics are stored locally in this browser. Exported blocklists include domains only.</p>
+          <div class="actions-row">
+            <button id="settingsExportBtn" class="secondary-btn" type="button">Export Blocklist</button>
+            <button id="settingsResetStatsBtn" class="danger-btn" type="button">Reset Stats</button>
+          </div>
+        </section>
+      </section>
     </section>
   </main>
+
+  <div id="deleteDialog" class="dialog-backdrop" hidden>
+    <section class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="deleteTitle">
+      <p class="eyebrow">Hard to delete</p>
+      <h2 id="deleteTitle">Keep this blocker?</h2>
+      <p id="deleteQuote" class="quote-text"></p>
+      <p id="deleteQuestion" class="muted-copy"></p>
+      <div class="dialog-actions">
+        <button id="cancelDeleteBtn" class="secondary-btn" type="button">No, keep blocked</button>
+        <button id="confirmDeleteBtn" class="danger-btn" type="button">Yes</button>
+      </div>
+    </section>
+  </div>
+
   <script src="options.js"></script>
 </body>
 </html>

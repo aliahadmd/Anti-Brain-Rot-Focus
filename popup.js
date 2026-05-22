@@ -1,4 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
+  const PAUSE_WARNING = 'Pausing costs 3 reward days. Keep protecting your streak?';
+  const DISABLE_WARNING = 'Disabling Focus makes today ineligible for rewards. Disable Focus anyway?';
   const statusDiv = document.getElementById('status');
   const toggleBtn = document.getElementById('toggleBtn');
   const optionsLink = document.getElementById('optionsLink');
@@ -68,12 +70,49 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  function applyPausePenalty(minutes, callback) {
+    chrome.runtime.sendMessage({
+      type: 'APPLY_PAUSE_REWARD_PENALTY',
+      minutes
+    }, (response) => {
+      if (chrome.runtime.lastError || !response || !response.ok) {
+        window.alert('Pause was not applied because the reward penalty could not be recorded.');
+        return;
+      }
+
+      callback();
+    });
+  }
+
+  function markFocusDisabled(callback) {
+    chrome.runtime.sendMessage({ type: 'MARK_FOCUS_DISABLED' }, (response) => {
+      if (chrome.runtime.lastError || !response || !response.ok) {
+        window.alert('Focus was not disabled because the reward state could not be updated.');
+        return;
+      }
+
+      callback();
+    });
+  }
+
   toggleBtn.addEventListener('click', () => {
     chrome.storage.local.get('isEnabled', (data) => {
       const newState = data.isEnabled === false;
-      chrome.storage.local.set({ isEnabled: newState, pausedUntil: null }, () => {
+
+      if (!newState && !window.confirm(DISABLE_WARNING)) {
+        refresh();
+        return;
+      }
+
+      const saveState = () => chrome.storage.local.set({ isEnabled: newState, pausedUntil: null }, () => {
         refresh();
       });
+
+      if (newState) {
+        saveState();
+      } else {
+        markFocusDisabled(saveState);
+      }
     });
   });
 
@@ -81,11 +120,14 @@ document.addEventListener('DOMContentLoaded', () => {
     button.addEventListener('click', () => {
       const minutes = Number(button.dataset.minutes);
       if (!Number.isFinite(minutes)) return;
+      if (!window.confirm(PAUSE_WARNING)) return;
 
-      chrome.storage.local.set({
-        isEnabled: true,
-        pausedUntil: Date.now() + minutes * 60000
-      }, refresh);
+      applyPausePenalty(minutes, () => {
+        chrome.storage.local.set({
+          isEnabled: true,
+          pausedUntil: Date.now() + minutes * 60000
+        }, refresh);
+      });
     });
   });
 

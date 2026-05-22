@@ -1,6 +1,7 @@
 const DEFAULT_MOTIVATION = 'You came here to focus. Take a breath, choose the next useful action, and keep going.';
 
 document.addEventListener('DOMContentLoaded', () => {
+  const PAUSE_WARNING = 'Pausing costs 3 reward days. Keep protecting your streak?';
   const params = new URLSearchParams(window.location.search);
   const target = params.get('target');
   const targetEl = document.getElementById('target');
@@ -34,12 +35,24 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   pauseBtn.addEventListener('click', () => {
-    chrome.storage.local.set({
-      isEnabled: true,
-      pausedUntil: Date.now() + 5 * 60000
-    }, () => {
-      actionStatus.textContent = 'Focus is paused for 5 minutes.';
-      pauseBtn.disabled = true;
+    if (!window.confirm(PAUSE_WARNING)) return;
+
+    chrome.runtime.sendMessage({
+      type: 'APPLY_PAUSE_REWARD_PENALTY',
+      minutes: 5
+    }, (response) => {
+      if (chrome.runtime.lastError || !response || !response.ok) {
+        actionStatus.textContent = 'Pause was not applied because the reward penalty could not be recorded.';
+        return;
+      }
+
+      chrome.storage.local.set({
+        isEnabled: true,
+        pausedUntil: Date.now() + 5 * 60000
+      }, () => {
+        actionStatus.textContent = 'Focus is paused for 5 minutes. Reward progress lost 3 days.';
+        pauseBtn.disabled = true;
+      });
     });
   });
 
