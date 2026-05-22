@@ -363,6 +363,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const cancelDeleteBtn = document.getElementById('cancelDeleteBtn');
   const sectionTitles = {
     overview: 'Overview',
+    guide: 'Guide',
     analytics: 'Analytics',
     rewards: 'Rewards',
     sites: 'Blocked Sites',

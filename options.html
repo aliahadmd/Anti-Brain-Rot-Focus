@@ -22,9 +22,15 @@
         <button class="nav-btn" type="button" data-section="sites">Blocked Sites</button>
         <button class="nav-btn" type="button" data-section="settings">Settings</button>
       </nav>
-      <div class="sidebar-status">
-        <span id="focusState">Loading</span>
-        <small id="pauseStatus"></small>
+      <div class="sidebar-bottom">
+        <nav class="sidebar-nav sidebar-utility" aria-label="Help and project links">
+          <button class="nav-btn" type="button" data-section="guide">Guide</button>
+          <a class="sidebar-link" href="https://github.com/aliahadmd/Anti-Brain-Rot-Focus" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </nav>
+        <div class="sidebar-status">
+          <span id="focusState">Loading</span>
+          <small id="pauseStatus"></small>
+        </div>
       </div>
     </aside>
 
@@ -85,6 +91,51 @@
             </div>
           </section>
         </div>
+      </section>
+
+      <section id="guidePanel" class="dashboard-panel" data-panel="guide" hidden>
+        <section class="section guide-hero">
+          <div>
+            <p class="eyebrow">Quick Guide</p>
+            <h2>Use Focus in four steps</h2>
+            <p class="muted-copy">Set your distractions once, keep Focus enabled, and let the dashboard track your saves and medals.</p>
+          </div>
+        </section>
+
+        <div class="guide-grid">
+          <article class="guide-card">
+            <span class="guide-icon">1</span>
+            <h3>Add blocked sites</h3>
+            <p>Add domains like youtube.com or use presets in Blocked Sites. Subdomains are covered automatically.</p>
+          </article>
+          <article class="guide-card">
+            <span class="guide-icon">2</span>
+            <h3>Keep Focus on</h3>
+            <p>Use the popup or dashboard switch. A Focus Day counts when Focus stays enabled and you do not pause.</p>
+          </article>
+          <article class="guide-card">
+            <span class="guide-icon">3</span>
+            <h3>Check progress</h3>
+            <p>Analytics shows saves and trends. Rewards shows medal progress and earned awards.</p>
+          </article>
+          <article class="guide-card">
+            <span class="guide-icon">4</span>
+            <h3>Pause carefully</h3>
+            <p>Pausing costs 3 reward days. You will get a warning before the pause is applied.</p>
+          </article>
+        </div>
+
+        <section class="section guide-tips">
+          <div class="section-header">
+            <h2>Good habits</h2>
+          </div>
+          <ul class="simple-list">
+            <li>Review Top Distractions when you want to tighten your blocklist.</li>
+            <li>Export your blocklist before moving to another browser profile.</li>
+            <li>Use Clear Pause only when you are ready to return to Focus Mode.</li>
+            <li>Hard delete asks three times so accidental removals are less likely.</li>
+          </ul>
+        </section>
       </section>
 
       <section id="analyticsPanel" class="dashboard-panel" data-panel="analytics" hidden>
