@@ -1,77 +1,27 @@
-const STORAGE_KEYS = [
-  'stats',
-  'dailyStats',
-  'analyticsMeta',
-  'rewardState',
-  'motivationalText',
-  'blockedSites',
-  'isEnabled',
-  'pausedUntil'
+const DASHBOARD_KEYS = [
+  STORAGE.stats,
+  STORAGE.dailyStats,
+  STORAGE.analyticsMeta,
+  STORAGE.rewardState,
+  STORAGE.motivationalText,
+  STORAGE.blockedSites,
+  STORAGE.siteAddedOn,
+  STORAGE.isEnabled,
+  STORAGE.pausedUntil
 ];
-const DEFAULT_MOTIVATION = 'You came here to focus. Take a breath, choose the next useful action, and keep going.';
-const PAUSE_WARNING = 'Pausing costs 3 reward days. Keep protecting your streak?';
-const DISABLE_WARNING = 'Disabling Focus makes today ineligible for rewards. Disable Focus anyway?';
 const DELETE_QUOTES = [
   'The easiest click is not always the kindest one to your future self.',
   'You blocked this for a reason. Is that reason still true?',
   'Last check: protect your attention like it matters, because it does.'
 ];
-const MEDAL_NAMES_10 = [
-  'Neon Spark',
-  'Prism Momentum',
-  'Comet Cadence',
-  'Aurora Focus',
-  'Thunder Crown',
-  'Quantum Streak'
-];
-const MEDAL_NAMES_30 = [
-  'Chrono Phoenix',
-  'Solar Titan',
-  'Galaxy Guardian',
-  'Diamond Mind'
-];
-const MEDAL_GLYPHS_10 = ['✦', '◆', '☄', '✺', '♛', '✧'];
-const MEDAL_GLYPHS_30 = ['🔥', '☀', '✹', '♦'];
-
-function getDateKey(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-
-  return `${year}-${month}-${day}`;
-}
+const PENALTY_REASON_TEXT = {
+  pause: (event) => `after ${event.minutes || 0}m pause`,
+  disable: () => 'for disabling Focus',
+  'remove-site': (event) => `for removing ${event.site || 'a site'}`
+};
 
 function getLocalDayStart(date = new Date()) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
-}
-
-function parseDateKeyLocal(dateKey) {
-  const [year, month, day] = dateKey.split('-').map(Number);
-  return new Date(year, month - 1, day);
-}
-
-function getLocalIsoString(date = new Date()) {
-  const offsetMinutes = -date.getTimezoneOffset();
-  const offsetSign = offsetMinutes >= 0 ? '+' : '-';
-  const absoluteOffset = Math.abs(offsetMinutes);
-  const offsetHours = String(Math.floor(absoluteOffset / 60)).padStart(2, '0');
-  const offsetRemainingMinutes = String(absoluteOffset % 60).padStart(2, '0');
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  const seconds = String(date.getSeconds()).padStart(2, '0');
-
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${offsetSign}${offsetHours}:${offsetRemainingMinutes}`;
-}
-
-function getLocalTimeZone() {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local time';
-  } catch (error) {
-    return 'Local time';
-  }
 }
 
 function formatLocalDateTime(date = new Date()) {
@@ -91,56 +41,36 @@ function getRecentDateKeys(days, now = new Date()) {
   });
 }
 
-function normalizeSiteInput(value) {
-  let input = String(value || '').trim().toLowerCase();
+// Groups per-host counts under the blocked site that covers them. Older
+// versions stored counts by visited subdomain (m.youtube.com); newer ones
+// store them by blocked site, so both end up in the same bucket.
+function aggregateSiteStats(stats = {}, blockedSites = []) {
+  const siteSet = new Set(blockedSites.map(normalizeHost));
 
-  if (!input) {
-    return { error: 'Enter a domain to block.' };
-  }
+  return Object.entries(stats).reduce((totals, [host, count]) => {
+    if (host === 'total' || !Number.isFinite(count)) return totals;
 
-  input = input.replace(/^\*\./, '');
-
-  try {
-    if (!/^[a-z][a-z0-9+.-]*:\/\//.test(input)) {
-      input = `https://${input}`;
-    }
-
-    const { hostname } = new URL(input);
-    const site = hostname.replace(/^www\./, '').replace(/\.$/, '');
-
-    if (!site || site.includes('..') || !/^[a-z0-9.-]+$/.test(site)) {
-      return { error: 'Use a valid domain, like example.com.' };
-    }
-
-    if (!site.includes('.') && site !== 'localhost') {
-      return { error: 'Use a full domain, like example.com.' };
-    }
-
-    return { site };
-  } catch (error) {
-    return { error: 'Use a valid domain, like example.com.' };
-  }
+    const key = findMatchingBlockedSite(host, siteSet) || host;
+    totals[key] = (totals[key] || 0) + count;
+    return totals;
+  }, {});
 }
 
-function getSiteCount(stats = {}, site) {
-  return Number.isFinite(stats[site]) ? stats[site] : 0;
-}
-
-function getSortedSites(sites = [], stats = {}, searchTerm = '', sortMode = 'nameAsc') {
+function getSortedSites(sites = [], siteCounts = {}, searchTerm = '', sortMode = 'nameAsc') {
   const query = searchTerm.trim().toLowerCase();
   const filtered = sites.filter((site) => site.toLowerCase().includes(query));
+  const countOf = (site) => siteCounts[site] || 0;
 
   return filtered.sort((a, b) => {
     if (sortMode === 'nameDesc') return b.localeCompare(a);
-    if (sortMode === 'mostBlocked') return getSiteCount(stats, b) - getSiteCount(stats, a) || a.localeCompare(b);
-    if (sortMode === 'leastBlocked') return getSiteCount(stats, a) - getSiteCount(stats, b) || a.localeCompare(b);
+    if (sortMode === 'mostBlocked') return countOf(b) - countOf(a) || a.localeCompare(b);
+    if (sortMode === 'leastBlocked') return countOf(a) - countOf(b) || a.localeCompare(b);
     return a.localeCompare(b);
   });
 }
 
-function getTopSites(stats = {}, limit = 5) {
-  return Object.entries(stats)
-    .filter(([key, value]) => key !== 'total' && Number.isFinite(value))
+function getTopSites(siteCounts = {}, limit = 5) {
+  return Object.entries(siteCounts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, limit);
 }
@@ -188,67 +118,6 @@ function getLegacyUntrackedTotal(stats = {}, dailyStats = {}) {
   return Math.max(0, (stats.total || 0) - sumDailyStats(dailyStats));
 }
 
-function createDefaultRewardState(date = new Date()) {
-  const today = getDateKey(date);
-
-  return {
-    progressDays: 0,
-    lastEvaluatedDate: today,
-    disabledSinceDate: null,
-    dayLog: {
-      [today]: {
-        disabled: false,
-        paused: false,
-        credited: false
-      }
-    },
-    pauseEvents: [],
-    earnedMedals: [],
-    createdAt: getLocalIsoString(date),
-    timeZone: getLocalTimeZone()
-  };
-}
-
-function normalizeRewardState(state, date = new Date()) {
-  const fallback = createDefaultRewardState(date);
-
-  if (!state || typeof state !== 'object') {
-    return fallback;
-  }
-
-  return {
-    ...fallback,
-    ...state,
-    progressDays: Math.max(0, Number.isFinite(state.progressDays) ? state.progressDays : 0),
-    lastEvaluatedDate: state.lastEvaluatedDate || fallback.lastEvaluatedDate,
-    disabledSinceDate: state.disabledSinceDate || null,
-    dayLog: state.dayLog && typeof state.dayLog === 'object' ? state.dayLog : fallback.dayLog,
-    pauseEvents: Array.isArray(state.pauseEvents) ? state.pauseEvents : [],
-    earnedMedals: Array.isArray(state.earnedMedals) ? state.earnedMedals : [],
-    timeZone: getLocalTimeZone()
-  };
-}
-
-function getMedalName(type, threshold) {
-  if (type === 'prestige') {
-    const index = Math.floor(threshold / 30) - 1;
-    return MEDAL_NAMES_30[index % MEDAL_NAMES_30.length];
-  }
-
-  const index = Math.floor(threshold / 10) - 1;
-  return MEDAL_NAMES_10[index % MEDAL_NAMES_10.length];
-}
-
-function getMedalGlyph(type, threshold) {
-  if (type === 'prestige') {
-    const index = Math.floor(threshold / 30) - 1;
-    return MEDAL_GLYPHS_30[index % MEDAL_GLYPHS_30.length];
-  }
-
-  const index = Math.floor(threshold / 10) - 1;
-  return MEDAL_GLYPHS_10[index % MEDAL_GLYPHS_10.length];
-}
-
 function getNextReward(progressDays, interval) {
   const threshold = Math.floor(progressDays / interval) * interval + interval;
   const current = progressDays % interval;
@@ -257,41 +126,6 @@ function getNextReward(progressDays, interval) {
     threshold,
     current,
     remaining: threshold - progressDays
-  };
-}
-
-function mergeImportedBlocklist(existingSites = [], importedPayload) {
-  const importedSites = importedPayload && Array.isArray(importedPayload.blockedSites)
-    ? importedPayload.blockedSites
-    : [];
-  const existingSet = new Set(existingSites);
-  const mergedSet = new Set(existingSites);
-  const invalid = [];
-  const duplicates = [];
-  const added = [];
-
-  importedSites.forEach((rawSite) => {
-    const result = normalizeSiteInput(rawSite);
-
-    if (result.error) {
-      invalid.push(String(rawSite));
-      return;
-    }
-
-    if (existingSet.has(result.site) || added.includes(result.site)) {
-      duplicates.push(result.site);
-      return;
-    }
-
-    added.push(result.site);
-    mergedSet.add(result.site);
-  });
-
-  return {
-    sites: [...mergedSet].sort(),
-    added,
-    duplicates,
-    invalid
   };
 }
 
@@ -331,6 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const thirtyDayTrackFill = document.getElementById('thirtyDayTrackFill');
   const pausePenaltyList = document.getElementById('pausePenaltyList');
   const earnedMedalsGrid = document.getElementById('earnedMedalsGrid');
+  const medalCatalogCopy = document.getElementById('medalCatalogCopy');
   const medalCatalogCount = document.getElementById('medalCatalogCount');
   const medalCatalogList = document.getElementById('medalCatalogList');
   const blockedCountEl = document.getElementById('blockedCount');
@@ -378,11 +213,16 @@ document.addEventListener('DOMContentLoaded', () => {
     analyticsMeta: {},
     rewardState: createDefaultRewardState(),
     blockedSites: [],
+    siteAddedOn: {},
     isEnabled: true,
     pausedUntil: null
   };
+  let siteCounts = {};
   let pendingDeleteSite = null;
   let deleteStep = 0;
+  let focusBeforeDialog = null;
+  let motivationDirty = false;
+  let loadScheduled = false;
 
   function showMessage(element, message, isError = false) {
     element.textContent = message;
@@ -394,7 +234,7 @@ document.addEventListener('DOMContentLoaded', () => {
           element.textContent = '';
           element.classList.remove('error');
         }
-      }, 3600);
+      }, FEEDBACK_CLEAR_MS);
     }
   }
 
@@ -405,7 +245,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function formatRemaining(ms) {
     const minutes = Math.ceil(ms / 60000);
-    if (minutes < 60) return `${minutes} minutes left`;
+    if (minutes < 60) return `${pluralize(minutes, 'minute')} left`;
 
     const hours = Math.floor(minutes / 60);
     const remainingMinutes = minutes % 60;
@@ -448,13 +288,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     focusState.textContent = 'Active';
     pauseStatus.textContent = 'Blocking distractions';
-    resumeFocusBtn.disabled = !data.pausedUntil;
+    resumeFocusBtn.disabled = true;
   }
 
-  function renderTopDistractions(stats = {}) {
+  function renderTopDistractions() {
     topDistractionsEl.textContent = '';
 
-    const sorted = getTopSites(stats, 5);
+    const sorted = getTopSites(siteCounts, 5);
 
     if (sorted.length === 0) {
       const li = document.createElement('li');
@@ -504,17 +344,17 @@ document.addEventListener('DOMContentLoaded', () => {
       label.className = 'bar-label';
       label.textContent = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
-      track.title = `${day.dateKey}: ${day.total} redirects`;
+      track.title = `${day.dateKey}: ${pluralize(day.total, 'redirect')}`;
       track.appendChild(fill);
       wrapper.append(value, track, label);
       dailyChartEl.appendChild(wrapper);
     });
   }
 
-  function renderTopSiteBars(stats = {}) {
+  function renderTopSiteBars() {
     topSiteBarsEl.textContent = '';
 
-    const topSites = getTopSites(stats, 8);
+    const topSites = getTopSites(siteCounts, 8);
     const maxCount = Math.max(1, ...topSites.map(([, count]) => count));
 
     if (topSites.length === 0) {
@@ -547,16 +387,16 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function renderSiteList(sites = [], stats = {}) {
+  function renderSiteList(sites = []) {
     siteListEl.textContent = '';
     blockedCountEl.textContent = sites.length;
 
-    const visibleSites = getSortedSites(sites, stats, siteSearchEl.value, siteSortEl.value);
+    const visibleSites = getSortedSites(sites, siteCounts, siteSearchEl.value, siteSortEl.value);
 
     if (sites.length === 0) {
       const li = document.createElement('li');
       li.className = 'empty';
-      li.textContent = 'No blocked sites yet.';
+      li.textContent = 'No blocked sites yet. Days without a blocked site do not count toward rewards.';
       siteListEl.appendChild(li);
       return;
     }
@@ -580,7 +420,7 @@ document.addEventListener('DOMContentLoaded', () => {
       siteName.className = 'site-name';
       siteName.textContent = site;
       count.className = 'site-count';
-      count.textContent = `${getSiteCount(stats, site)} saves`;
+      count.textContent = pluralize(siteCounts[site] || 0, 'save');
 
       btn.textContent = 'Remove';
       btn.type = 'button';
@@ -617,7 +457,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (pauseEvents.length === 0) {
       const li = document.createElement('li');
       li.className = 'empty';
-      li.textContent = 'No pause penalties yet.';
+      li.textContent = 'No penalties yet.';
       pausePenaltyList.appendChild(li);
       return;
     }
@@ -626,9 +466,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const li = document.createElement('li');
       const date = document.createElement('strong');
       const detail = document.createElement('span');
+      const describe = PENALTY_REASON_TEXT[event.reason] || PENALTY_REASON_TEXT.pause;
 
       date.textContent = event.date || 'Local day';
-      detail.textContent = `-${event.penaltyDays || 3} days after ${event.minutes || 0}m pause`;
+      detail.textContent = `-${event.penaltyDays || REWARD_PENALTY_DAYS} days ${describe(event)}`;
       li.append(date, detail);
       pausePenaltyList.appendChild(li);
     });
@@ -640,15 +481,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (medals.length === 0) {
       const empty = document.createElement('p');
       empty.className = 'empty';
-      empty.textContent = 'No medals yet. Your first glow-up is waiting at 10 focus days.';
+      empty.textContent = `No medals yet. Your first glow-up is waiting at ${FOCUS_MEDAL_INTERVAL} focus days.`;
       earnedMedalsGrid.appendChild(empty);
     } else {
       [...medals]
-        .sort((a, b) => a.threshold - b.threshold || a.type.localeCompare(b.type))
+        .sort((a, b) => (a.threshold || 0) - (b.threshold || 0) || String(a.type).localeCompare(String(b.type)))
         .forEach((medal) => earnedMedalsGrid.appendChild(createMedalCard(medal)));
     }
 
-    const nextTen = getNextReward(progressDays, 10);
+    const nextTen = getNextReward(progressDays, FOCUS_MEDAL_INTERVAL);
     earnedMedalsGrid.appendChild(createMedalCard({
       type: 'focus',
       threshold: nextTen.threshold,
@@ -656,24 +497,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }, true));
   }
 
+  // Static content: rendered once.
   function renderMedalCatalog() {
     const catalogGroups = [
       {
-        title: 'Every 10 Focus Days',
+        title: `Every ${FOCUS_MEDAL_INTERVAL} Focus Days`,
         summary: `${MEDAL_NAMES_10.length} regular medal styles`,
         type: 'focus',
-        interval: 10,
+        interval: FOCUS_MEDAL_INTERVAL,
         names: MEDAL_NAMES_10
       },
       {
-        title: 'Every 30 Focus Days',
+        title: `Every ${PRESTIGE_MEDAL_INTERVAL} Focus Days`,
         summary: `${MEDAL_NAMES_30.length} prestige medal styles`,
         type: 'prestige',
-        interval: 30,
+        interval: PRESTIGE_MEDAL_INTERVAL,
         names: MEDAL_NAMES_30
       }
     ];
 
+    medalCatalogCopy.textContent = `There are ${MEDAL_NAMES_10.length} regular medal styles and ${MEDAL_NAMES_30.length} prestige medal styles. You can earn unlimited medals because the names repeat by cycle.`;
     medalCatalogCount.textContent = `${MEDAL_NAMES_10.length + MEDAL_NAMES_30.length} medal styles`;
     medalCatalogList.textContent = '';
 
@@ -699,9 +542,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const firstThreshold = group.interval * (index + 1);
 
         icon.className = 'catalog-medal-icon';
-        icon.textContent = group.type === 'prestige'
-          ? MEDAL_GLYPHS_30[index % MEDAL_GLYPHS_30.length]
-          : MEDAL_GLYPHS_10[index % MEDAL_GLYPHS_10.length];
+        icon.textContent = getMedalGlyph(group.type, firstThreshold);
         medalName.textContent = name;
         threshold.textContent = `First appears at ${firstThreshold} focus days`;
 
@@ -719,66 +560,86 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderRewards(rawRewardState) {
     const rewardState = normalizeRewardState(rawRewardState);
     const progressDays = rewardState.progressDays;
-    const nextTen = getNextReward(progressDays, 10);
-    const nextThirty = getNextReward(progressDays, 30);
+    const nextTen = getNextReward(progressDays, FOCUS_MEDAL_INTERVAL);
+    const nextThirty = getNextReward(progressDays, PRESTIGE_MEDAL_INTERVAL);
     const nextTenName = getMedalName('focus', nextTen.threshold);
     const nextThirtyName = getMedalName('prestige', nextThirty.threshold);
-    const tenPercent = Math.max(0, Math.min(100, (nextTen.current / 10) * 100));
-    const thirtyPercent = Math.max(0, Math.min(100, (nextThirty.current / 30) * 100));
+    const tenPercent = Math.max(0, Math.min(100, (nextTen.current / FOCUS_MEDAL_INTERVAL) * 100));
+    const thirtyPercent = Math.max(0, Math.min(100, (nextThirty.current / PRESTIGE_MEDAL_INTERVAL) * 100));
 
     overviewRewardDays.textContent = progressDays;
-    overviewRewardNext.textContent = `${nextTen.remaining} days to ${nextTenName}`;
+    overviewRewardNext.textContent = `${pluralize(nextTen.remaining, 'day')} to ${nextTenName}`;
     rewardProgressDays.textContent = progressDays;
     earnedMedalCount.textContent = rewardState.earnedMedals.length;
     nextPrestigeDays.textContent = nextThirty.remaining;
     nextPrestigeName.textContent = `days to ${nextThirtyName}`;
     nextMedalTitle.textContent = `${nextTenName} awaits`;
-    nextMedalCopy.textContent = `${nextTen.remaining} more focus days unlocks your next 10-day medal. ${nextThirty.remaining} days to the next prestige award.`;
+    nextMedalCopy.textContent = `${pluralize(nextTen.remaining, 'more focus day')} unlocks your next ${FOCUS_MEDAL_INTERVAL}-day medal. ${pluralize(nextThirty.remaining, 'day')} to the next prestige award.`;
     nextMedalIcon.textContent = getMedalGlyph('focus', nextTen.threshold);
     nextMedalType.textContent = `${nextTen.threshold}-day medal`;
     tenDayTrackName.textContent = nextTenName;
-    tenDayTrackLabel.textContent = `${nextTen.current} / 10`;
+    tenDayTrackLabel.textContent = `${nextTen.current} / ${FOCUS_MEDAL_INTERVAL}`;
     tenDayTrackFill.style.width = `${tenPercent}%`;
     thirtyDayTrackName.textContent = nextThirtyName;
-    thirtyDayTrackLabel.textContent = `${nextThirty.current} / 30`;
+    thirtyDayTrackLabel.textContent = `${nextThirty.current} / ${PRESTIGE_MEDAL_INTERVAL}`;
     thirtyDayTrackFill.style.width = `${thirtyPercent}%`;
 
     renderPenaltyList(rewardState.pauseEvents);
     renderEarnedMedals(rewardState.earnedMedals, progressDays);
-    renderMedalCatalog();
+  }
+
+  function renderAnalyticsStatus(data, dailyStats, now) {
+    const stats = data.stats || { total: 0 };
+    const legacyUntrackedTotal = getLegacyUntrackedTotal(stats, dailyStats);
+    const timeZone = (data.analyticsMeta && data.analyticsMeta.timeZone) || getLocalTimeZone();
+    const lastUpdated = data.analyticsMeta && data.analyticsMeta.lastUpdatedAt
+      ? new Date(data.analyticsMeta.lastUpdatedAt)
+      : null;
+    const parts = [`Using local computer time (${timeZone}). Last refreshed ${formatLocalDateTime(now)}.`];
+
+    if (legacyUntrackedTotal) {
+      parts.push(`${pluralize(legacyUntrackedTotal, 'older save')} predate daily analytics and are included only in all-time totals.`);
+    } else if (lastUpdated && !Number.isNaN(lastUpdated.getTime())) {
+      parts.push(`Last redirect ${formatLocalDateTime(lastUpdated)}.`);
+    } else {
+      parts.push('No redirects recorded yet.');
+    }
+
+    analyticsTimeStatus.textContent = parts.join(' ');
+  }
+
+  function renderMotivation(text) {
+    // Never overwrite what the user is typing.
+    if (motivationDirty || document.activeElement === motivationTextEl) return;
+    motivationTextEl.value = text || DEFAULT_MOTIVATION;
   }
 
   function renderDashboard(data) {
     const now = new Date();
     const stats = data.stats || { total: 0 };
-    const dailyStats = normalizeDailyStats(data.dailyStats || {});
-    const blockedSites = Array.isArray(data.blockedSites) ? data.blockedSites : [];
+    const dailyStats = data.dailyStats;
     const todayTotal = getDailyTotal(dailyStats, getDateKey(now));
-    const weekTotal = sumRecentDays(dailyStats, 7, now);
-    const legacyUntrackedTotal = getLegacyUntrackedTotal(stats, dailyStats);
-    const timeZone = (data.analyticsMeta && data.analyticsMeta.timeZone) || getLocalTimeZone();
-    const lastUpdated = data.analyticsMeta && data.analyticsMeta.lastUpdatedAt
-      ? data.analyticsMeta.lastUpdatedAt
-      : getLocalIsoString(now);
+
+    siteCounts = aggregateSiteStats(stats, data.blockedSites);
 
     totalCountEl.textContent = stats.total || 0;
     todayCountEl.textContent = todayTotal;
     analyticsTodayCountEl.textContent = todayTotal;
     analyticsAllTimeCountEl.textContent = stats.total || 0;
-    weekCountEl.textContent = weekTotal;
-    analyticsTimeStatus.textContent = `Using local computer time (${timeZone}). Last refreshed ${formatLocalDateTime(now)}. ${legacyUntrackedTotal ? `${legacyUntrackedTotal} older saves predate daily analytics and are included only in all-time totals.` : `Last saved redirect ${lastUpdated}.`}`;
-    motivationTextEl.value = data.motivationalText || DEFAULT_MOTIVATION;
+    weekCountEl.textContent = sumRecentDays(dailyStats, 7, now);
 
+    renderAnalyticsStatus(data, dailyStats, now);
+    renderMotivation(data.motivationalText);
     renderFocusState(data);
-    renderTopDistractions(stats);
+    renderTopDistractions();
     renderDailyChart(dailyStats, now);
-    renderTopSiteBars(stats);
-    renderSiteList(blockedSites, stats);
+    renderTopSiteBars();
+    renderSiteList(data.blockedSites);
     renderRewards(data.rewardState);
   }
 
   function loadData() {
-    chrome.storage.local.get(STORAGE_KEYS, (data) => {
+    chrome.storage.local.get(DASHBOARD_KEYS, (data) => {
       currentData = {
         ...currentData,
         ...data,
@@ -786,52 +647,35 @@ document.addEventListener('DOMContentLoaded', () => {
         dailyStats: normalizeDailyStats(data.dailyStats || {}),
         analyticsMeta: data.analyticsMeta || {},
         rewardState: normalizeRewardState(data.rewardState),
-        blockedSites: Array.isArray(data.blockedSites) ? data.blockedSites : []
+        blockedSites: Array.isArray(data.blockedSites) ? data.blockedSites : [],
+        siteAddedOn: data.siteAddedOn && typeof data.siteAddedOn === 'object' ? data.siteAddedOn : {}
       };
-
-      if (currentData.pausedUntil && currentData.pausedUntil <= Date.now()) {
-        chrome.storage.local.set({ pausedUntil: null });
-        currentData.pausedUntil = null;
-      }
 
       renderDashboard(currentData);
     });
   }
 
-  function saveBlockedSites(sites, callback = loadData) {
-    const uniqueSites = [...new Set(sites)].sort();
-    chrome.storage.local.set({ blockedSites: uniqueSites }, callback);
+  // Coalesces bursts of storage changes into one render.
+  function scheduleLoad() {
+    if (loadScheduled) return;
+    loadScheduled = true;
+    setTimeout(() => {
+      loadScheduled = false;
+      loadData();
+    }, 50);
   }
 
-  function requestRewardReconcile(callback = loadData) {
-    if (!chrome.runtime.sendMessage) {
-      callback();
-      return;
-    }
+  function reportAddResult(result, verb = 'Added') {
+    const parts = [`${verb} ${pluralize(result.added.length, 'site')}`];
 
-    chrome.runtime.sendMessage({ type: 'RECONCILE_REWARDS' }, () => {
-      callback();
-    });
+    if (result.duplicates.length) parts.push(`${result.duplicates.length} already blocked`);
+    if (result.invalid.length) parts.push(`${result.invalid.length} invalid`);
+    if (result.overLimit.length) parts.push(`${result.overLimit.length} over the ${MAX_BLOCKED_SITES}-site limit`);
+
+    showMessage(siteFeedback, `${parts.join('; ')}.`, result.added.length === 0 && (result.invalid.length > 0 || result.overLimit.length > 0));
   }
 
-  function markFocusDisabled(callback) {
-    if (!chrome.runtime.sendMessage) {
-      callback();
-      return;
-    }
-
-    chrome.runtime.sendMessage({ type: 'MARK_FOCUS_DISABLED' }, (response) => {
-      if (chrome.runtime.lastError || !response || !response.ok) {
-        window.alert('Focus was not disabled because the reward state could not be updated.');
-        loadData();
-        return;
-      }
-
-      callback();
-    });
-  }
-
-  function addSiteFromInput() {
+  async function addSiteFromInput() {
     const result = normalizeSiteInput(newSiteInput.value);
 
     if (result.error) {
@@ -839,33 +683,44 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    chrome.storage.local.get(['blockedSites'], (data) => {
-      const sites = Array.isArray(data.blockedSites) ? data.blockedSites : [];
+    if (result.hasPath) {
+      showMessage(siteFeedback, `Only whole domains can be blocked. Enter "${result.site}" to block all of ${result.site}.`, true);
+      return;
+    }
 
-      if (sites.includes(result.site)) {
-        showMessage(siteFeedback, `${result.site} is already blocked.`, true);
-        return;
-      }
+    const response = await sendExtensionMessage({ type: MESSAGE.addSites, sites: [result.site] });
 
-      saveBlockedSites([...sites, result.site], () => {
-        newSiteInput.value = '';
-        showMessage(siteFeedback, `${result.site} added.`);
-        loadData();
-      });
-    });
+    if (!response.ok) {
+      showMessage(siteFeedback, `Could not add ${result.site}. ${response.error}`, true);
+    } else if (response.added.length) {
+      newSiteInput.value = '';
+      showMessage(siteFeedback, `${result.site} added.`);
+    } else if (response.overLimit.length) {
+      showMessage(siteFeedback, `You can block up to ${MAX_BLOCKED_SITES} sites.`, true);
+    } else {
+      showMessage(siteFeedback, `${result.site} is already blocked.`, true);
+    }
   }
 
-  function removeSiteConfirmed(siteToRemove) {
-    chrome.storage.local.get(['blockedSites'], (data) => {
-      const sites = Array.isArray(data.blockedSites) ? data.blockedSites : [];
-      saveBlockedSites(sites.filter((site) => site !== siteToRemove), () => {
-        showMessage(siteFeedback, `${siteToRemove} removed.`);
-        loadData();
-      });
-    });
+  async function removeSiteConfirmed(siteToRemove) {
+    const response = await sendExtensionMessage({ type: MESSAGE.removeSite, site: siteToRemove });
+
+    if (!response.ok) {
+      showMessage(siteFeedback, `Could not remove ${siteToRemove}. ${response.error}`, true);
+      return;
+    }
+
+    showMessage(siteFeedback, response.penaltyApplied
+      ? `${siteToRemove} removed. Reward progress lost ${REWARD_PENALTY_DAYS} days.`
+      : `${siteToRemove} removed.`);
+  }
+
+  function isSiteRemovalFree(site) {
+    return currentData.siteAddedOn[site] === getDateKey();
   }
 
   function openDeleteDialog(site) {
+    focusBeforeDialog = document.activeElement;
     pendingDeleteSite = site;
     deleteStep = 0;
     renderDeleteDialog();
@@ -877,15 +732,23 @@ document.addEventListener('DOMContentLoaded', () => {
     deleteDialog.hidden = true;
     pendingDeleteSite = null;
     deleteStep = 0;
+
+    if (focusBeforeDialog && document.contains(focusBeforeDialog)) {
+      focusBeforeDialog.focus();
+    }
+    focusBeforeDialog = null;
   }
 
   function renderDeleteDialog() {
-    const stepLabel = `${deleteStep + 1}/3`;
+    const isLastStep = deleteStep === DELETE_QUOTES.length - 1;
+    const cost = isSiteRemovalFree(pendingDeleteSite)
+      ? 'You added it today, so removing it is free.'
+      : `Removing it costs ${REWARD_PENALTY_DAYS} reward days and makes today ineligible.`;
 
     deleteTitle.textContent = `Remove ${pendingDeleteSite}?`;
     deleteQuote.textContent = DELETE_QUOTES[deleteStep];
-    deleteQuestion.textContent = `Confirmation ${stepLabel}: do you still want this site removed from your blocklist?`;
-    confirmDeleteBtn.textContent = deleteStep === DELETE_QUOTES.length - 1 ? 'Yes, remove it' : 'Yes, ask again';
+    deleteQuestion.textContent = `Confirmation ${deleteStep + 1}/${DELETE_QUOTES.length}: do you still want this site removed from your blocklist? ${cost}`;
+    confirmDeleteBtn.textContent = isLastStep ? 'Yes, remove it' : 'Yes, ask again';
   }
 
   function confirmDeleteStep() {
@@ -904,9 +767,13 @@ document.addEventListener('DOMContentLoaded', () => {
     removeSiteConfirmed(siteToRemove);
   }
 
-  function resetStats() {
+  async function resetStats() {
     if (!window.confirm('Reset all focus statistics, including analytics history?')) return;
-    chrome.storage.local.set({ stats: { total: 0 }, dailyStats: {}, analyticsMeta: {} }, loadData);
+
+    const response = await sendExtensionMessage({ type: MESSAGE.resetStats });
+    if (!response.ok) {
+      window.alert(`Statistics were not reset. ${response.error}`);
+    }
   }
 
   function exportBlocklist() {
@@ -925,41 +792,58 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.appendChild(link);
     link.click();
     link.remove();
-    URL.revokeObjectURL(url);
+    // Revoking synchronously can cancel the download in some browsers.
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   function importBlocklist(file) {
     if (!file) return;
 
+    if (file.size > MAX_IMPORT_FILE_BYTES) {
+      showMessage(siteFeedback, `That file is too large. Blocklists must be under ${Math.round(MAX_IMPORT_FILE_BYTES / 1024)} KB.`, true);
+      importFile.value = '';
+      return;
+    }
+
     const reader = new FileReader();
-    reader.addEventListener('load', () => {
+    reader.addEventListener('load', async () => {
+      importFile.value = '';
+
+      let payload;
       try {
-        const payload = JSON.parse(reader.result);
-        const result = mergeImportedBlocklist(currentData.blockedSites, payload);
-
-        if (!Array.isArray(payload.blockedSites)) {
-          showMessage(siteFeedback, 'Import file must include a blockedSites array.', true);
-          return;
-        }
-
-        saveBlockedSites(result.sites, () => {
-          showMessage(
-            siteFeedback,
-            `Imported ${result.added.length}; skipped ${result.duplicates.length} duplicate and ${result.invalid.length} invalid.`
-          );
-          loadData();
-        });
+        payload = JSON.parse(reader.result);
       } catch (error) {
         showMessage(siteFeedback, 'Could not read that JSON blocklist.', true);
-      } finally {
-        importFile.value = '';
+        return;
       }
+
+      if (!payload || !Array.isArray(payload.blockedSites)) {
+        showMessage(siteFeedback, 'Import file must include a blockedSites array.', true);
+        return;
+      }
+
+      const response = await sendExtensionMessage({ type: MESSAGE.addSites, sites: payload.blockedSites });
+
+      if (!response.ok) {
+        showMessage(siteFeedback, `Import failed. ${response.error}`, true);
+        return;
+      }
+
+      reportAddResult(response, 'Imported');
+    });
+    reader.addEventListener('error', () => {
+      importFile.value = '';
+      showMessage(siteFeedback, 'Could not read that file.', true);
     });
     reader.readAsText(file);
   }
 
   navButtons.forEach((button) => {
     button.addEventListener('click', () => showSection(button.dataset.section));
+  });
+
+  motivationTextEl.addEventListener('input', () => {
+    motivationDirty = true;
   });
 
   saveTextBtn.addEventListener('click', () => {
@@ -970,7 +854,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    chrome.storage.local.set({ motivationalText: text }, () => {
+    chrome.storage.local.set({ [STORAGE.motivationalText]: text }, () => {
+      motivationDirty = false;
       showMessage(saveStatus, 'Saved.');
     });
   });
@@ -984,31 +869,32 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  siteSearchEl.addEventListener('input', () => renderSiteList(currentData.blockedSites, currentData.stats));
-  siteSortEl.addEventListener('change', () => renderSiteList(currentData.blockedSites, currentData.stats));
+  siteSearchEl.addEventListener('input', () => renderSiteList(currentData.blockedSites));
+  siteSortEl.addEventListener('change', () => renderSiteList(currentData.blockedSites));
 
-  enabledToggle.addEventListener('change', () => {
-    const nextEnabledState = enabledToggle.checked;
+  enabledToggle.addEventListener('change', async () => {
+    const enable = enabledToggle.checked;
 
-    if (!nextEnabledState && !window.confirm(DISABLE_WARNING)) {
+    if (!enable && !window.confirm(DISABLE_WARNING)) {
       enabledToggle.checked = true;
       return;
     }
 
-    const saveEnabledState = () => chrome.storage.local.set({
-      isEnabled: nextEnabledState,
-      pausedUntil: null
-    }, loadData);
+    enabledToggle.disabled = true;
+    const response = await sendExtensionMessage({ type: MESSAGE.setFocusEnabled, enabled: enable });
+    enabledToggle.disabled = false;
 
-    if (nextEnabledState) {
-      saveEnabledState();
-    } else {
-      markFocusDisabled(saveEnabledState);
+    if (!response.ok) {
+      window.alert(`Focus was not changed. ${response.error}`);
     }
+    loadData();
   });
 
-  resumeFocusBtn.addEventListener('click', () => {
-    chrome.storage.local.set({ isEnabled: true, pausedUntil: null }, loadData);
+  resumeFocusBtn.addEventListener('click', async () => {
+    const response = await sendExtensionMessage({ type: MESSAGE.resumeFocus });
+    if (!response.ok) {
+      window.alert(`Focus was not resumed. ${response.error}`);
+    }
   });
 
   resetStatsBtn.addEventListener('click', resetStats);
@@ -1024,38 +910,56 @@ document.addEventListener('DOMContentLoaded', () => {
       closeDeleteDialog();
     }
   });
+  deleteDialog.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeDeleteDialog();
+      return;
+    }
+
+    // Keep keyboard focus inside the dialog.
+    if (event.key === 'Tab') {
+      const focusable = [cancelDeleteBtn, confirmDeleteBtn];
+      const index = focusable.indexOf(document.activeElement);
+      const nextIndex = event.shiftKey
+        ? (index <= 0 ? focusable.length - 1 : index - 1)
+        : (index === focusable.length - 1 ? 0 : index + 1);
+
+      event.preventDefault();
+      focusable[nextIndex].focus();
+    }
+  });
 
   presetButtons.forEach((button) => {
-    button.addEventListener('click', () => {
-      const presetSites = button.dataset.sites
-        .split(',')
-        .map((site) => normalizeSiteInput(site).site)
-        .filter(Boolean);
+    button.addEventListener('click', async () => {
+      const presetSites = PRESET_BLOCKLISTS[button.dataset.preset] || [];
+      const response = await sendExtensionMessage({ type: MESSAGE.addSites, sites: presetSites });
 
-      chrome.storage.local.get(['blockedSites'], (data) => {
-        const sites = Array.isArray(data.blockedSites) ? data.blockedSites : [];
-        const additions = presetSites.filter((site) => !sites.includes(site));
-
-        if (additions.length === 0) {
-          showMessage(siteFeedback, 'Those sites are already blocked.');
-          return;
-        }
-
-        saveBlockedSites([...sites, ...additions], () => {
-          showMessage(siteFeedback, `${additions.length} sites added.`);
-          loadData();
-        });
-      });
+      if (!response.ok) {
+        showMessage(siteFeedback, `Could not add preset. ${response.error}`, true);
+      } else if (response.added.length === 0 && response.overLimit.length === 0) {
+        showMessage(siteFeedback, 'Those sites are already blocked.');
+      } else {
+        reportAddResult(response);
+      }
     });
   });
 
+  document.querySelectorAll('.js-penalty-days').forEach((element) => {
+    element.textContent = REWARD_PENALTY_DAYS;
+  });
+
   chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName === 'local' && Object.keys(changes).some((key) => STORAGE_KEYS.includes(key))) {
-      loadData();
+    if (areaName === 'local' && Object.keys(changes).some((key) => DASHBOARD_KEYS.includes(key))) {
+      scheduleLoad();
     }
   });
 
   showSection('overview');
-  requestRewardReconcile(loadData);
-  setInterval(loadData, 30000);
+  renderMedalCatalog();
+  loadData();
+  sendExtensionMessage({ type: MESSAGE.reconcileRewards }).then((response) => {
+    if (!response.ok) console.warn('Reward reconcile failed:', response.error);
+  });
+  setInterval(scheduleLoad, UI_REFRESH_INTERVAL_MS);
 });

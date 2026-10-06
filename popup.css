@@ -111,22 +111,22 @@ button:disabled {
   background: #115e59;
 }
 
-.primary-btn.off {
+.primary-btn.danger {
   background: #b42318;
 }
 
-.primary-btn.off:hover {
+.primary-btn.danger:hover {
   background: #912018;
 }
 
 .pause-row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  display: flex;
   gap: 8px;
   margin-top: 8px;
 }
 
 .ghost-btn {
+  flex: 1 1 0;
   border: 1px solid #cbd5e1;
   background: #ffffff;
   color: #334155;

@@ -1,0 +1,9 @@
+{
+  "name": "anti-brain-rot-focus",
+  "private": true,
+  "description": "Browser extension that blocks distracting sites and rewards focus days.",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "package": "sh scripts/package.sh"
+  }
+}

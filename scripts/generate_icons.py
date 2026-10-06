@@ -60,7 +60,7 @@ def generate_icon_data(size):
 
 def main():
     sizes = [16, 48, 128]
-    output_dir = 'icons'
+    output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'icons')
     
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)

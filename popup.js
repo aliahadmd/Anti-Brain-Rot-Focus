@@ -1,6 +1,4 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const PAUSE_WARNING = 'Pausing costs 3 reward days. Keep protecting your streak?';
-  const DISABLE_WARNING = 'Disabling Focus makes today ineligible for rewards. Disable Focus anyway?';
   const statusDiv = document.getElementById('status');
   const toggleBtn = document.getElementById('toggleBtn');
   const optionsLink = document.getElementById('optionsLink');
@@ -8,6 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const siteCountEl = document.getElementById('siteCount');
   const resumeBtn = document.getElementById('resumeBtn');
   const pauseButtons = [...document.querySelectorAll('.pause-btn')];
+  let busy = false;
 
   function getRemainingPause(pausedUntil) {
     if (!Number.isFinite(pausedUntil)) return 0;
@@ -40,7 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
     totalCountEl.textContent = (data.stats && data.stats.total) || 0;
     siteCountEl.textContent = Array.isArray(data.blockedSites) ? data.blockedSites.length : 0;
 
-    toggleBtn.classList.toggle('off', isEnabled);
+    toggleBtn.classList.toggle('danger', isEnabled);
     toggleBtn.textContent = isEnabled ? 'Disable Focus' : 'Enable Focus';
 
     pauseButtons.forEach((button) => {
@@ -58,61 +57,29 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function refresh() {
-    chrome.storage.local.get(['isEnabled', 'pausedUntil', 'stats', 'blockedSites'], (data) => {
-      if (data.pausedUntil && data.pausedUntil <= Date.now()) {
-        chrome.storage.local.set({ pausedUntil: null }, () => {
-          updateUI({ ...data, pausedUntil: null });
-        });
-        return;
-      }
-
-      updateUI(data);
-    });
+    chrome.storage.local.get([STORAGE.isEnabled, STORAGE.pausedUntil, STORAGE.stats, STORAGE.blockedSites], updateUI);
   }
 
-  function applyPausePenalty(minutes, callback) {
-    chrome.runtime.sendMessage({
-      type: 'APPLY_PAUSE_REWARD_PENALTY',
-      minutes
-    }, (response) => {
-      if (chrome.runtime.lastError || !response || !response.ok) {
-        window.alert('Pause was not applied because the reward penalty could not be recorded.');
-        return;
-      }
+  async function runAction(message, failureText) {
+    if (busy) return;
+    busy = true;
 
-      callback();
-    });
-  }
+    const response = await sendExtensionMessage(message);
+    busy = false;
 
-  function markFocusDisabled(callback) {
-    chrome.runtime.sendMessage({ type: 'MARK_FOCUS_DISABLED' }, (response) => {
-      if (chrome.runtime.lastError || !response || !response.ok) {
-        window.alert('Focus was not disabled because the reward state could not be updated.');
-        return;
-      }
-
-      callback();
-    });
+    if (!response.ok) {
+      window.alert(`${failureText} ${response.error}`);
+    }
+    refresh();
   }
 
   toggleBtn.addEventListener('click', () => {
-    chrome.storage.local.get('isEnabled', (data) => {
-      const newState = data.isEnabled === false;
+    chrome.storage.local.get(STORAGE.isEnabled, (data) => {
+      const enable = data.isEnabled === false;
 
-      if (!newState && !window.confirm(DISABLE_WARNING)) {
-        refresh();
-        return;
-      }
+      if (!enable && !window.confirm(DISABLE_WARNING)) return;
 
-      const saveState = () => chrome.storage.local.set({ isEnabled: newState, pausedUntil: null }, () => {
-        refresh();
-      });
-
-      if (newState) {
-        saveState();
-      } else {
-        markFocusDisabled(saveState);
-      }
+      runAction({ type: MESSAGE.setFocusEnabled, enabled: enable }, 'Focus was not changed.');
     });
   });
 
@@ -122,27 +89,20 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!Number.isFinite(minutes)) return;
       if (!window.confirm(PAUSE_WARNING)) return;
 
-      applyPausePenalty(minutes, () => {
-        chrome.storage.local.set({
-          isEnabled: true,
-          pausedUntil: Date.now() + minutes * 60000
-        }, refresh);
-      });
+      runAction({ type: MESSAGE.pauseFocus, minutes }, 'Pause was not applied.');
     });
   });
 
   resumeBtn.addEventListener('click', () => {
-    chrome.storage.local.set({ isEnabled: true, pausedUntil: null }, refresh);
+    runAction({ type: MESSAGE.resumeFocus }, 'Focus was not resumed.');
   });
 
-  optionsLink.addEventListener('click', () => {
-    if (chrome.runtime.openOptionsPage) {
-      chrome.runtime.openOptionsPage();
-    } else {
-      window.open(chrome.runtime.getURL('options.html'));
-    }
+  optionsLink.addEventListener('click', () => chrome.runtime.openOptionsPage());
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === 'local') refresh();
   });
 
   refresh();
-  setInterval(refresh, 30000);
+  setInterval(refresh, UI_REFRESH_INTERVAL_MS);
 });

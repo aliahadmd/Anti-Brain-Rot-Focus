@@ -1,490 +1,497 @@
-const DEFAULT_BLOCKED_SITES = [
-  "youtube.com",
-  "x.com",
-  "twitter.com",
-  "facebook.com",
-  "instagram.com",
-  "tiktok.com",
-  "reddit.com"
-];
+importScripts('lib/shared.js', 'lib/engine.js');
 
-const DEFAULT_MOTIVATION = "You came here to focus. Take a breath, choose the next useful action, and keep going.";
-const REWARD_STORAGE_KEY = "rewardState";
-const REWARD_PENALTY_DAYS = 3;
-const REWARD_RETENTION_DAYS = 370;
-const MEDAL_NAMES_10 = [
-  "Neon Spark",
-  "Prism Momentum",
-  "Comet Cadence",
-  "Aurora Focus",
-  "Thunder Crown",
-  "Quantum Streak"
-];
-const MEDAL_NAMES_30 = [
-  "Chrono Phoenix",
-  "Solar Titan",
-  "Galaxy Guardian",
-  "Diamond Mind"
-];
-const STORAGE_KEYS = [
-  "blockedSites",
-  "motivationalText",
-  "isEnabled",
-  "stats",
-  "dailyStats",
-  "analyticsMeta",
-  REWARD_STORAGE_KEY,
-  "pausedUntil"
-];
+// The service worker is the only writer of focus, reward, blocklist, and stats
+// state. Extension pages read storage directly but change it through messages,
+// so every change is one serialized read-modify-write.
 
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.get(STORAGE_KEYS, (result) => {
-    const updates = {};
+const BLOCK_RULE_ID = 1;
+const RETURN_URL_PREFIX = 'returnUrl:';
 
-    if (!Array.isArray(result.blockedSites)) {
-      updates.blockedSites = DEFAULT_BLOCKED_SITES;
-    }
-    if (!result.motivationalText) {
-      updates.motivationalText = DEFAULT_MOTIVATION;
-    }
-    if (result.isEnabled === undefined) {
-      updates.isEnabled = true;
-    }
-    if (!result.stats) {
-      updates.stats = { total: 0 };
-    }
-    if (!result.dailyStats) {
-      updates.dailyStats = {};
-    }
-    if (!result.analyticsMeta) {
-      updates.analyticsMeta = {};
-    }
-    if (!result[REWARD_STORAGE_KEY]) {
-      updates[REWARD_STORAGE_KEY] = createDefaultRewardState();
-    }
-    if (result.pausedUntil === undefined) {
-      updates.pausedUntil = null;
-    }
+let storageQueue = Promise.resolve();
+let lastReconciledDateKey = null;
 
-    if (Object.keys(updates).length > 0) {
-      chrome.storage.local.set(updates);
-    }
-
-    chrome.alarms.create("reward-reconcile", { periodInMinutes: 60 });
-  });
-});
-
-chrome.runtime.onStartup.addListener(() => {
-  chrome.alarms.create("reward-reconcile", { periodInMinutes: 60 });
-  reconcileRewards();
-});
-
-function normalizeHost(hostname) {
-  return hostname.toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
+function withStorageLock(task) {
+  const run = storageQueue.then(task);
+  storageQueue = run.catch(() => {});
+  return run;
 }
 
-function normalizeBlockedSite(site) {
-  const value = String(site || "")
-    .trim()
-    .toLowerCase()
-    .replace(/^\*\./, "")
-    .replace(/\.$/, "");
+function isFocusPaused(pausedUntil, now = Date.now()) {
+  return Number.isFinite(pausedUntil) && pausedUntil > now;
+}
 
+function isFocusActive(data, now = Date.now()) {
+  return data.isEnabled !== false && !isFocusPaused(data.pausedUntil, now);
+}
+
+function getBlockedSites(data) {
+  return Array.isArray(data.blockedSites) ? data.blockedSites : [];
+}
+
+function getFocusContext(data) {
+  return {
+    isEnabled: data.isEnabled !== false,
+    hasBlockedSites: getBlockedSites(data).length > 0
+  };
+}
+
+function isWebUrl(url) {
+  return url && (url.protocol === 'http:' || url.protocol === 'https:');
+}
+
+function parseUrl(value) {
   try {
-    const urlValue = /^[a-z][a-z0-9+.-]*:\/\//.test(value) ? value : `https://${value}`;
-    return normalizeHost(new URL(urlValue).hostname);
+    return new URL(value);
   } catch (error) {
-    return normalizeHost(value.split("/")[0].split(":")[0]);
+    return null;
   }
 }
 
-function isBlockedHost(hostname, blockedSites = []) {
-  const host = normalizeHost(hostname);
+// ---------------------------------------------------------------------------
+// Rewards
 
-  return blockedSites.some((site) => {
-    const blockedSite = normalizeBlockedSite(site);
-    return blockedSite && (host === blockedSite || host.endsWith(`.${blockedSite}`));
-  });
-}
+async function loadReconciledRewards(date = new Date()) {
+  const data = await chrome.storage.local.get([
+    STORAGE.rewardState,
+    STORAGE.isEnabled,
+    STORAGE.blockedSites,
+    STORAGE.pausedUntil
+  ]);
 
-function isFocusPaused(pausedUntil) {
-  return Number.isFinite(pausedUntil) && pausedUntil > Date.now();
-}
-
-function getDateKey(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-}
-
-function getLocalIsoString(date = new Date()) {
-  const offsetMinutes = -date.getTimezoneOffset();
-  const offsetSign = offsetMinutes >= 0 ? "+" : "-";
-  const absoluteOffset = Math.abs(offsetMinutes);
-  const offsetHours = String(Math.floor(absoluteOffset / 60)).padStart(2, "0");
-  const offsetRemainingMinutes = String(absoluteOffset % 60).padStart(2, "0");
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  const seconds = String(date.getSeconds()).padStart(2, "0");
-
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${offsetSign}${offsetHours}:${offsetRemainingMinutes}`;
-}
-
-function getLocalTimeZone() {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "Local time";
-  } catch (error) {
-    return "Local time";
-  }
-}
-
-function addDays(date, days) {
-  const nextDate = new Date(date);
-  nextDate.setDate(nextDate.getDate() + days);
-  return nextDate;
-}
-
-function getDaysBetween(startDateKey, endDateKey) {
-  const start = new Date(`${startDateKey}T00:00:00`);
-  const end = new Date(`${endDateKey}T00:00:00`);
-  const days = [];
-
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return days;
-  }
-
-  for (let date = start; date < end; date = addDays(date, 1)) {
-    days.push(getDateKey(date));
-  }
-
-  return days;
-}
-
-function createDefaultRewardState(date = new Date()) {
-  const today = getDateKey(date);
-
+  lastReconciledDateKey = getDateKey(date);
   return {
-    progressDays: 0,
-    lastEvaluatedDate: today,
-    disabledSinceDate: null,
-    dayLog: {
-      [today]: {
-        disabled: false,
-        paused: false,
-        credited: false
-      }
-    },
-    pauseEvents: [],
-    earnedMedals: [],
-    createdAt: getLocalIsoString(date),
-    timeZone: getLocalTimeZone()
-  };
-}
-
-function normalizeRewardState(state, date = new Date()) {
-  const fallback = createDefaultRewardState(date);
-
-  if (!state || typeof state !== "object") {
-    return fallback;
-  }
-
-  return {
-    ...fallback,
-    ...state,
-    progressDays: Math.max(0, Number.isFinite(state.progressDays) ? state.progressDays : 0),
-    lastEvaluatedDate: state.lastEvaluatedDate || fallback.lastEvaluatedDate,
-    disabledSinceDate: state.disabledSinceDate || null,
-    dayLog: state.dayLog && typeof state.dayLog === "object" ? state.dayLog : fallback.dayLog,
-    pauseEvents: Array.isArray(state.pauseEvents) ? state.pauseEvents : [],
-    earnedMedals: Array.isArray(state.earnedMedals) ? state.earnedMedals : [],
-    timeZone: getLocalTimeZone()
-  };
-}
-
-function getMedalName(type, threshold) {
-  if (type === "prestige") {
-    const index = Math.floor(threshold / 30) - 1;
-    return MEDAL_NAMES_30[index % MEDAL_NAMES_30.length];
-  }
-
-  const index = Math.floor(threshold / 10) - 1;
-  return MEDAL_NAMES_10[index % MEDAL_NAMES_10.length];
-}
-
-function createMedal(type, threshold, date = new Date()) {
-  return {
-    id: `${type}-${threshold}`,
-    type,
-    threshold,
-    name: getMedalName(type, threshold),
-    earnedAt: getLocalIsoString(date),
-    earnedDate: getDateKey(date),
-    timeZone: getLocalTimeZone()
-  };
-}
-
-function awardEligibleMedals(state, previousProgress, date = new Date()) {
-  const earnedIds = new Set(state.earnedMedals.map((medal) => medal.id));
-  const newMedals = [];
-
-  for (let threshold = 10; threshold <= state.progressDays; threshold += 10) {
-    if (threshold > previousProgress && !earnedIds.has(`focus-${threshold}`)) {
-      newMedals.push(createMedal("focus", threshold, date));
-    }
-  }
-
-  for (let threshold = 30; threshold <= state.progressDays; threshold += 30) {
-    if (threshold > previousProgress && !earnedIds.has(`prestige-${threshold}`)) {
-      newMedals.push(createMedal("prestige", threshold, date));
-    }
-  }
-
-  if (newMedals.length === 0) {
-    return state;
-  }
-
-  return {
-    ...state,
-    earnedMedals: [...state.earnedMedals, ...newMedals]
-  };
-}
-
-function pruneRewardState(state, date = new Date()) {
-  const cutoffDateKey = getDateKey(addDays(date, -REWARD_RETENTION_DAYS));
-  const dayLog = {};
-
-  Object.entries(state.dayLog || {}).forEach(([dateKey, entry]) => {
-    if (dateKey >= cutoffDateKey) {
-      dayLog[dateKey] = entry;
-    }
-  });
-
-  return {
-    ...state,
-    dayLog,
-    pauseEvents: (state.pauseEvents || []).slice(-REWARD_RETENTION_DAYS)
-  };
-}
-
-function reconcileRewardState(rawState, isEnabled, date = new Date()) {
-  let state = normalizeRewardState(rawState, date);
-  const today = getDateKey(date);
-  const datesToEvaluate = getDaysBetween(state.lastEvaluatedDate, today);
-  let progressDays = state.progressDays;
-
-  datesToEvaluate.forEach((dateKey) => {
-    const dayEntry = {
-      disabled: false,
-      paused: false,
-      credited: false,
-      ...(state.dayLog[dateKey] || {})
-    };
-
-    if (state.disabledSinceDate && dateKey >= state.disabledSinceDate) {
-      dayEntry.disabled = true;
-    }
-
-    if (!dayEntry.disabled && !dayEntry.paused && !dayEntry.credited) {
-      progressDays += 1;
-      dayEntry.credited = true;
-    }
-
-    state.dayLog[dateKey] = dayEntry;
-  });
-
-  const todayEntry = {
-    disabled: false,
-    paused: false,
-    credited: false,
-    ...(state.dayLog[today] || {})
-  };
-
-  if (isEnabled === false) {
-    todayEntry.disabled = true;
-    state.disabledSinceDate = state.disabledSinceDate || today;
-  } else {
-    state.disabledSinceDate = null;
-  }
-
-  state.dayLog[today] = todayEntry;
-  state.progressDays = progressDays;
-  state.lastEvaluatedDate = today;
-  state.timeZone = getLocalTimeZone();
-  state = awardEligibleMedals(state, rawState && Number.isFinite(rawState.progressDays) ? rawState.progressDays : 0, date);
-  return pruneRewardState(state, date);
-}
-
-function applyPausePenalty(rawState, minutes, date = new Date()) {
-  let state = reconcileRewardState(rawState, true, date);
-  const today = getDateKey(date);
-  const previousProgress = state.progressDays;
-  const todayEntry = {
-    disabled: false,
-    paused: false,
-    credited: false,
-    ...(state.dayLog[today] || {})
-  };
-
-  todayEntry.paused = true;
-  state.dayLog[today] = todayEntry;
-  state.progressDays = Math.max(0, state.progressDays - REWARD_PENALTY_DAYS);
-  state.pauseEvents = [
-    ...(state.pauseEvents || []),
-    {
-      at: getLocalIsoString(date),
-      date: today,
-      minutes,
-      penaltyDays: REWARD_PENALTY_DAYS,
-      progressBefore: previousProgress,
-      progressAfter: state.progressDays,
-      timeZone: getLocalTimeZone()
-    }
-  ];
-
-  return pruneRewardState(state, date);
-}
-
-function markTodayDisabled(rawState, date = new Date()) {
-  let state = reconcileRewardState(rawState, false, date);
-  const today = getDateKey(date);
-
-  state.dayLog[today] = {
-    paused: false,
-    credited: false,
-    ...(state.dayLog[today] || {}),
-    disabled: true
-  };
-  state.disabledSinceDate = state.disabledSinceDate || today;
-  return pruneRewardState(state, date);
-}
-
-function updateDailyStats(dailyStats = {}, hostname, date = new Date()) {
-  const dateKey = getDateKey(date);
-  const dayStats = dailyStats[dateKey] || { total: 0, sites: {} };
-  const sites = dayStats.sites || {};
-
-  return {
-    ...dailyStats,
-    [dateKey]: {
-      total: (dayStats.total || 0) + 1,
-      sites: {
-        ...sites,
-        [hostname]: (sites[hostname] || 0) + 1
-      },
-      updatedAt: getLocalIsoString(date),
-      timeZone: getLocalTimeZone()
-    }
+    data,
+    rewardState: reconcileRewardState(data[STORAGE.rewardState], getFocusContext(data), date)
   };
 }
 
 function reconcileRewards() {
-  chrome.storage.local.get([REWARD_STORAGE_KEY, "isEnabled"], (data) => {
-    const rewardState = reconcileRewardState(data[REWARD_STORAGE_KEY], data.isEnabled !== false);
-    chrome.storage.local.set({ [REWARD_STORAGE_KEY]: rewardState });
+  return withStorageLock(async () => {
+    const { rewardState } = await loadReconciledRewards();
+    await chrome.storage.local.set({ [STORAGE.rewardState]: rewardState });
+    return rewardState;
   });
 }
 
-function applyRewardPause(minutes, callback) {
-  const pauseMinutes = Number.isFinite(minutes) ? minutes : 5;
-
-  chrome.storage.local.get([REWARD_STORAGE_KEY], (data) => {
-    const rewardState = applyPausePenalty(data[REWARD_STORAGE_KEY], pauseMinutes);
-    chrome.storage.local.set({ [REWARD_STORAGE_KEY]: rewardState }, () => callback(rewardState));
-  });
-}
-
-function markFocusDisabled(callback) {
-  chrome.storage.local.get([REWARD_STORAGE_KEY], (data) => {
-    const rewardState = markTodayDisabled(data[REWARD_STORAGE_KEY]);
-    chrome.storage.local.set({ [REWARD_STORAGE_KEY]: rewardState }, () => callback(rewardState));
-  });
-}
-
-chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === "reward-reconcile") {
-    reconcileRewards();
+// Makes sure today has a dayLog entry so it can be credited later.
+function touchToday() {
+  if (lastReconciledDateKey !== getDateKey()) {
+    reconcileRewards().catch((error) => console.error('Reward reconcile failed:', error));
   }
-});
+}
+
+// ---------------------------------------------------------------------------
+// State changes requested by extension pages
+
+function setFocusEnabled(enabled) {
+  return withStorageLock(async () => {
+    const { data, rewardState } = await loadReconciledRewards();
+    const wasEnabled = data.isEnabled !== false;
+    const nextRewardState = wasEnabled && !enabled
+      ? applyRewardPenalty(rewardState, { reason: 'disable' })
+      : rewardState;
+
+    await chrome.storage.local.set({
+      [STORAGE.isEnabled]: enabled,
+      [STORAGE.pausedUntil]: null,
+      [STORAGE.rewardState]: nextRewardState
+    });
+    await chrome.alarms.clear(ALARM.pauseEnd);
+
+    return { penaltyApplied: nextRewardState !== rewardState };
+  });
+}
+
+function pauseFocus(requestedMinutes) {
+  const minutes = Number.isFinite(requestedMinutes) && requestedMinutes > 0
+    ? Math.min(requestedMinutes, MAX_PAUSE_MINUTES)
+    : DEFAULT_PAUSE_MINUTES;
+
+  return withStorageLock(async () => {
+    const { data, rewardState } = await loadReconciledRewards();
+
+    // Nothing to pause: a stale block page asked while Focus was already
+    // off or paused. Never charge twice.
+    if (!isFocusActive(data)) {
+      await chrome.storage.local.set({ [STORAGE.rewardState]: rewardState });
+      return { penaltyApplied: false, focusActive: false, pausedUntil: data.pausedUntil || null };
+    }
+
+    const pausedUntil = Date.now() + minutes * 60000;
+    await chrome.storage.local.set({
+      [STORAGE.pausedUntil]: pausedUntil,
+      [STORAGE.rewardState]: applyRewardPenalty(rewardState, { reason: 'pause', minutes })
+    });
+    await chrome.alarms.create(ALARM.pauseEnd, { when: pausedUntil });
+
+    return { penaltyApplied: true, focusActive: false, pausedUntil };
+  });
+}
+
+function resumeFocus() {
+  return withStorageLock(async () => {
+    const { rewardState } = await loadReconciledRewards();
+
+    await chrome.storage.local.set({
+      [STORAGE.pausedUntil]: null,
+      [STORAGE.rewardState]: rewardState
+    });
+    await chrome.alarms.clear(ALARM.pauseEnd);
+    return {};
+  });
+}
+
+function clearExpiredPause() {
+  return withStorageLock(async () => {
+    const { pausedUntil } = await chrome.storage.local.get(STORAGE.pausedUntil);
+
+    if (!pausedUntil) return;
+
+    if (isFocusPaused(pausedUntil)) {
+      await chrome.alarms.create(ALARM.pauseEnd, { when: pausedUntil });
+      return;
+    }
+
+    await chrome.storage.local.set({ [STORAGE.pausedUntil]: null });
+  });
+}
+
+function addSites(rawSites) {
+  return withStorageLock(async () => {
+    const { data, rewardState } = await loadReconciledRewards();
+    const extra = await chrome.storage.local.get(STORAGE.siteAddedOn);
+    const sites = getBlockedSites(data);
+    const siteSet = new Set(sites);
+    const siteAddedOn = { ...(extra[STORAGE.siteAddedOn] || {}) };
+    const today = getDateKey();
+    const result = { added: [], duplicates: [], invalid: [], overLimit: [] };
+
+    (Array.isArray(rawSites) ? rawSites : []).forEach((rawSite) => {
+      const { site, error } = normalizeSiteInput(rawSite);
+
+      if (error) {
+        result.invalid.push(String(rawSite));
+      } else if (siteSet.has(site)) {
+        result.duplicates.push(site);
+      } else if (siteSet.size >= MAX_BLOCKED_SITES) {
+        result.overLimit.push(site);
+      } else {
+        siteSet.add(site);
+        siteAddedOn[site] = today;
+        result.added.push(site);
+      }
+    });
+
+    if (result.added.length > 0) {
+      await chrome.storage.local.set({
+        [STORAGE.blockedSites]: [...siteSet].sort(),
+        [STORAGE.siteAddedOn]: siteAddedOn,
+        [STORAGE.rewardState]: rewardState
+      });
+    }
+
+    return result;
+  });
+}
+
+function removeSite(siteToRemove) {
+  return withStorageLock(async () => {
+    const { data, rewardState } = await loadReconciledRewards();
+    const extra = await chrome.storage.local.get(STORAGE.siteAddedOn);
+    const sites = getBlockedSites(data);
+    const site = normalizeHost(siteToRemove);
+
+    if (!sites.includes(site)) {
+      return { removed: false, penaltyApplied: false };
+    }
+
+    const siteAddedOn = { ...(extra[STORAGE.siteAddedOn] || {}) };
+    const today = getDateKey();
+    const isFree = siteAddedOn[site] === today;
+    const remainingSites = sites.filter((item) => item !== site);
+    let nextRewardState = isFree
+      ? rewardState
+      : applyRewardPenalty(rewardState, { reason: 'remove-site', site });
+
+    if (remainingSites.length === 0) {
+      nextRewardState = {
+        ...nextRewardState,
+        dayLog: { ...nextRewardState.dayLog, [today]: createDayEntry({ ...nextRewardState.dayLog[today], unprotected: true }) }
+      };
+    }
+
+    delete siteAddedOn[site];
+    await chrome.storage.local.set({
+      [STORAGE.blockedSites]: remainingSites,
+      [STORAGE.siteAddedOn]: siteAddedOn,
+      [STORAGE.rewardState]: nextRewardState
+    });
+
+    return { removed: true, penaltyApplied: !isFree };
+  });
+}
+
+function resetStats() {
+  return withStorageLock(() => chrome.storage.local.set({
+    [STORAGE.stats]: { total: 0 },
+    [STORAGE.dailyStats]: {},
+    [STORAGE.analyticsMeta]: {}
+  }));
+}
+
+function recordVisit(site) {
+  return withStorageLock(async () => {
+    const data = await chrome.storage.local.get([STORAGE.stats, STORAGE.dailyStats]);
+    const next = recordBlockedVisit(data[STORAGE.stats], data[STORAGE.dailyStats], site);
+
+    await chrome.storage.local.set({
+      [STORAGE.stats]: next.stats,
+      [STORAGE.dailyStats]: next.dailyStats,
+      [STORAGE.analyticsMeta]: next.analyticsMeta
+    });
+  });
+}
+
+const MESSAGE_HANDLERS = {
+  [MESSAGE.setFocusEnabled]: (message) => setFocusEnabled(message.enabled === true),
+  [MESSAGE.pauseFocus]: (message) => pauseFocus(Number(message.minutes)),
+  [MESSAGE.resumeFocus]: () => resumeFocus(),
+  [MESSAGE.addSites]: (message) => addSites(message.sites),
+  [MESSAGE.removeSite]: (message) => removeSite(message.site),
+  [MESSAGE.resetStats]: () => resetStats().then(() => ({})),
+  [MESSAGE.reconcileRewards]: () => reconcileRewards().then((rewardState) => ({ rewardState }))
+};
+
+// Messages that change what is blocked. Their reply waits for the block rule
+// to update, so a page that navigates right after a pause is not stopped by a
+// stale rule.
+const BLOCKING_MESSAGES = new Set([
+  MESSAGE.setFocusEnabled,
+  MESSAGE.pauseFocus,
+  MESSAGE.resumeFocus,
+  MESSAGE.addSites,
+  MESSAGE.removeSite
+]);
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (!message || typeof message !== "object") return false;
+  const handler = message && typeof message === 'object' ? MESSAGE_HANDLERS[message.type] : null;
+  if (!handler) return false;
 
-  if (message.type === "APPLY_PAUSE_REWARD_PENALTY") {
-    applyRewardPause(Number(message.minutes), (rewardState) => {
-      sendResponse({ ok: true, rewardState });
+  handler(message)
+    .then(async (result) => {
+      if (BLOCKING_MESSAGES.has(message.type)) {
+        await scheduleBlockingSync();
+      }
+      sendResponse({ ok: true, ...result });
+    })
+    .catch((error) => {
+      console.error(`${message.type} failed:`, error);
+      sendResponse({ ok: false, error: error.message || String(error) });
     });
-    return true;
-  }
-
-  if (message.type === "MARK_FOCUS_DISABLED") {
-    markFocusDisabled((rewardState) => {
-      sendResponse({ ok: true, rewardState });
-    });
-    return true;
-  }
-
-  if (message.type === "RECONCILE_REWARDS") {
-    chrome.storage.local.get([REWARD_STORAGE_KEY, "isEnabled"], (data) => {
-      const rewardState = reconcileRewardState(data[REWARD_STORAGE_KEY], data.isEnabled !== false);
-      chrome.storage.local.set({ [REWARD_STORAGE_KEY]: rewardState }, () => {
-        sendResponse({ ok: true, rewardState });
-      });
-    });
-    return true;
-  }
-
-  return false;
+  return true;
 });
 
-chrome.webNavigation.onBeforeNavigate.addListener((details) => {
-  if (details.frameId !== 0) return;
+// ---------------------------------------------------------------------------
+// Blocking
+//
+// A declarativeNetRequest block rule stops blocked hosts from loading at all,
+// including prerendered pages. webNavigation then swaps the tab to the
+// friendly block page, and a sweep catches tabs that were already open when
+// protection was switched on, a pause ended, or a site was added.
 
-  if (details.url.startsWith(chrome.runtime.getURL(""))) return;
+async function redirectToBlockPage(tabId, url, hostname) {
+  const blockPageUrl = `${chrome.runtime.getURL('blocked.html')}?target=${encodeURIComponent(normalizeHost(hostname))}`;
 
   try {
-    const url = new URL(details.url);
-    if (!["http:", "https:"].includes(url.protocol)) return;
+    // Kept in memory-only session storage so the block page can offer a way
+    // back after a pause without the full URL touching disk or history.
+    await chrome.storage.session.set({ [`${RETURN_URL_PREFIX}${tabId}`]: url });
+  } catch (error) {
+    console.warn('Could not remember the blocked URL:', error);
+  }
 
-    const hostname = url.hostname;
+  try {
+    await chrome.tabs.update(tabId, { url: blockPageUrl });
+  } catch (error) {
+    // The tab may have closed in the meantime.
+    console.warn(`Could not redirect tab ${tabId}:`, error.message || error);
+  }
+}
 
-    chrome.storage.local.get(["blockedSites", "isEnabled", "stats", "dailyStats", "pausedUntil"], (data) => {
-      if (data.isEnabled === false || !Array.isArray(data.blockedSites)) return;
+async function handleNavigation(tabId, rawUrl, { countVisit }) {
+  if (tabId < 0) return;
 
-      if (isFocusPaused(data.pausedUntil)) return;
+  const url = parseUrl(rawUrl);
+  if (!isWebUrl(url)) return;
 
-      if (data.pausedUntil && data.pausedUntil <= Date.now()) {
-        chrome.storage.local.set({ pausedUntil: null });
-      }
+  touchToday();
 
-      if (isBlockedHost(hostname, data.blockedSites)) {
-        const newStats = data.stats || { total: 0 };
-        newStats.total = (newStats.total || 0) + 1;
+  const data = await chrome.storage.local.get([STORAGE.blockedSites, STORAGE.isEnabled, STORAGE.pausedUntil]);
 
-        const normalizedHost = normalizeHost(hostname);
-        newStats[normalizedHost] = (newStats[normalizedHost] || 0) + 1;
+  if (data.pausedUntil && !isFocusPaused(data.pausedUntil)) {
+    clearExpiredPause().catch((error) => console.error('Clearing pause failed:', error));
+  }
 
-        const now = new Date();
-        const newDailyStats = updateDailyStats(data.dailyStats || {}, normalizedHost, now);
-        const analyticsMeta = {
-          lastUpdatedAt: getLocalIsoString(now),
-          lastUpdatedDate: getDateKey(now),
-          timeZone: getLocalTimeZone()
-        };
+  if (!isFocusActive(data)) return;
 
-        chrome.storage.local.set({ stats: newStats, dailyStats: newDailyStats, analyticsMeta });
+  const site = findMatchingBlockedSite(url.hostname, getBlockedSites(data));
+  if (!site) return;
 
-        const blockedUrl = chrome.runtime.getURL("blocked.html");
-        chrome.tabs.update(details.tabId, {
-          url: `${blockedUrl}?target=${encodeURIComponent(normalizedHost)}`
-        });
-      }
-    });
-  } catch (e) {
-    console.error("Invalid URL:", details.url);
+  await redirectToBlockPage(tabId, rawUrl, url.hostname);
+
+  if (countVisit) {
+    await recordVisit(site);
+  }
+}
+
+async function sweepOpenTabs(blockedSites) {
+  const siteSet = new Set(blockedSites.map(normalizeHost));
+  const tabs = await chrome.tabs.query({});
+
+  await Promise.all(tabs.map(async (tab) => {
+    if (!Number.isInteger(tab.id) || tab.id < 0) return;
+
+    // Tab URLs need the "tabs" permission; reading the top frame through
+    // webNavigation does not.
+    const frame = await chrome.webNavigation.getFrame({ tabId: tab.id, frameId: 0 }).catch(() => null);
+    const url = frame && parseUrl(frame.url);
+
+    if (isWebUrl(url) && findMatchingBlockedSite(url.hostname, siteSet)) {
+      await redirectToBlockPage(tab.id, frame.url, url.hostname);
+    }
+  }));
+}
+
+async function syncBlocking() {
+  const data = await chrome.storage.local.get([STORAGE.blockedSites, STORAGE.isEnabled, STORAGE.pausedUntil]);
+  const active = isFocusActive(data);
+  const domains = active
+    ? [...new Set(getBlockedSites(data).map(normalizeHost))].filter((site) => /^[a-z0-9.-]+$/.test(site))
+    : [];
+  const addRules = domains.length > 0
+    ? [{
+        id: BLOCK_RULE_ID,
+        priority: 1,
+        action: { type: 'block' },
+        condition: { requestDomains: domains, resourceTypes: ['main_frame'] }
+      }]
+    : [];
+
+  try {
+    await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds: [BLOCK_RULE_ID], addRules });
+  } catch (error) {
+    // webNavigation redirects still work without the rule.
+    console.error('Updating block rules failed:', error);
+  }
+
+  if (domains.length > 0) {
+    await sweepOpenTabs(domains);
+  }
+}
+
+let blockingSync = Promise.resolve();
+let blockingSyncPending = false;
+
+function scheduleBlockingSync() {
+  if (blockingSyncPending) return blockingSync;
+
+  blockingSyncPending = true;
+  blockingSync = blockingSync
+    .then(() => {
+      blockingSyncPending = false;
+      return syncBlocking();
+    })
+    .catch((error) => console.error('Blocking sync failed:', error));
+  return blockingSync;
+}
+
+chrome.webNavigation.onBeforeNavigate.addListener((details) => {
+  // Prerendered pages have a non-zero frameId; the block rule stops those.
+  if (details.frameId !== 0) return;
+
+  handleNavigation(details.tabId, details.url, { countVisit: true })
+    .catch((error) => console.error('Navigation check failed:', error));
+});
+
+chrome.webNavigation.onErrorOccurred.addListener((details) => {
+  // Backstop for loads stopped by the block rule before the redirect landed.
+  if (details.frameId !== 0 || details.error !== 'net::ERR_BLOCKED_BY_CLIENT') return;
+
+  handleNavigation(details.tabId, details.url, { countVisit: false })
+    .catch((error) => console.error('Blocked-load check failed:', error));
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  chrome.storage.session.remove(`${RETURN_URL_PREFIX}${tabId}`).catch(() => {});
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== 'local') return;
+
+  if (changes[STORAGE.blockedSites] || changes[STORAGE.isEnabled] || changes[STORAGE.pausedUntil]) {
+    scheduleBlockingSync();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Lifecycle
+
+async function ensureAlarms() {
+  const existing = await chrome.alarms.get(ALARM.rewardReconcile);
+
+  if (!existing) {
+    await chrome.alarms.create(ALARM.rewardReconcile, { periodInMinutes: REWARD_RECONCILE_PERIOD_MINUTES });
+  }
+}
+
+function initializeStorage() {
+  return withStorageLock(async () => {
+    const data = await chrome.storage.local.get(Object.values(STORAGE));
+    const today = getDateKey();
+    const updates = {};
+
+    if (!Array.isArray(data.blockedSites)) {
+      updates.blockedSites = [...DEFAULT_BLOCKED_SITES].sort();
+      updates.siteAddedOn = Object.fromEntries(DEFAULT_BLOCKED_SITES.map((site) => [site, today]));
+    } else if (!data.siteAddedOn || typeof data.siteAddedOn !== 'object') {
+      // Sites from older versions have no date, so removing them is never free.
+      updates.siteAddedOn = {};
+    }
+    if (!data.motivationalText) updates.motivationalText = DEFAULT_MOTIVATION;
+    if (data.isEnabled === undefined) updates.isEnabled = true;
+    if (!data.stats) updates.stats = { total: 0 };
+    if (!data.dailyStats) updates.dailyStats = {};
+    if (!data.analyticsMeta) updates.analyticsMeta = {};
+    if (data.pausedUntil === undefined) updates.pausedUntil = null;
+
+    const merged = { ...data, ...updates };
+    updates.rewardState = reconcileRewardState(data.rewardState, getFocusContext(merged));
+    lastReconciledDateKey = today;
+
+    await chrome.storage.local.set(updates);
+  });
+}
+
+chrome.runtime.onInstalled.addListener(() => {
+  initializeStorage()
+    .then(ensureAlarms)
+    .then(clearExpiredPause)
+    .then(scheduleBlockingSync)
+    .catch((error) => console.error('Install setup failed:', error));
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  ensureAlarms()
+    .then(clearExpiredPause)
+    .then(reconcileRewards)
+    .then(scheduleBlockingSync)
+    .catch((error) => console.error('Startup setup failed:', error));
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === ALARM.rewardReconcile) {
+    reconcileRewards().catch((error) => console.error('Reward reconcile failed:', error));
+  } else if (alarm.name === ALARM.pauseEnd) {
+    clearExpiredPause().catch((error) => console.error('Clearing pause failed:', error));
   }
 });

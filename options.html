@@ -106,12 +106,12 @@
           <article class="guide-card">
             <span class="guide-icon">1</span>
             <h3>Add blocked sites</h3>
-            <p>Add domains like youtube.com or use presets in Blocked Sites. Subdomains are covered automatically.</p>
+            <p>Add domains like youtube.com or use presets in Blocked Sites. Subdomains are covered automatically. Whole domains only; paths like youtube.com/shorts are not supported.</p>
           </article>
           <article class="guide-card">
             <span class="guide-icon">2</span>
             <h3>Keep Focus on</h3>
-            <p>Use the popup or dashboard switch. A Focus Day counts when Focus stays enabled and you do not pause.</p>
+            <p>A Focus Day counts when you use the browser that day with Focus on, at least one site blocked, and no pause, disable, or site removal.</p>
           </article>
           <article class="guide-card">
             <span class="guide-icon">3</span>
@@ -120,8 +120,8 @@
           </article>
           <article class="guide-card">
             <span class="guide-icon">4</span>
-            <h3>Pause carefully</h3>
-            <p>Pausing costs 3 reward days. You will get a warning before the pause is applied.</p>
+            <h3>Loosen carefully</h3>
+            <p>Pausing, disabling Focus, or removing a site each cost <span class="js-penalty-days">3</span> reward days. Sites you added today can be removed for free. Medals you earned are never taken away.</p>
           </article>
         </div>
 
@@ -133,7 +133,7 @@
             <li>Review Top Distractions when you want to tighten your blocklist.</li>
             <li>Export your blocklist before moving to another browser profile.</li>
             <li>Use Clear Pause only when you are ready to return to Focus Mode.</li>
-            <li>Hard delete asks three times so accidental removals are less likely.</li>
+            <li>Removing a site asks three times so accidental removals are less likely.</li>
           </ul>
         </section>
       </section>
@@ -178,7 +178,7 @@
           <article class="stat-card">
             <span class="label">Progress Days</span>
             <strong id="rewardProgressDays">0</strong>
-            <small>after pause penalties</small>
+            <small>after penalties</small>
           </article>
           <article class="stat-card">
             <span class="label">Earned Medals</span>
@@ -248,9 +248,9 @@
           <div class="section-header">
             <div>
               <h2>Medal List</h2>
-              <p class="medal-catalog-copy">There are 6 regular medal styles and 4 prestige medal styles. You can earn unlimited medals because the names repeat by cycle.</p>
+              <p id="medalCatalogCopy" class="medal-catalog-copy"></p>
             </div>
-            <span id="medalCatalogCount" class="medal-count-pill">10 medal styles</span>
+            <span id="medalCatalogCount" class="medal-count-pill"></span>
           </div>
           <div id="medalCatalogList" class="medal-catalog-list" aria-label="Available medal styles"></div>
         </section>
@@ -291,9 +291,9 @@
 
           <p id="siteFeedback" class="feedback" aria-live="polite"></p>
           <div class="preset-row" aria-label="Preset blocklists">
-            <button class="preset-btn" type="button" data-sites="youtube.com,tiktok.com,instagram.com,x.com,twitter.com,facebook.com,reddit.com">Social</button>
-            <button class="preset-btn" type="button" data-sites="netflix.com,hulu.com,disneyplus.com,twitch.tv">Streaming</button>
-            <button class="preset-btn" type="button" data-sites="amazon.com,ebay.com,etsy.com">Shopping</button>
+            <button class="preset-btn" type="button" data-preset="social">Social</button>
+            <button class="preset-btn" type="button" data-preset="streaming">Streaming</button>
+            <button class="preset-btn" type="button" data-preset="shopping">Shopping</button>
           </div>
           <ul id="siteList" class="site-list"></ul>
         </section>
@@ -341,6 +341,7 @@
     </section>
   </div>
 
+  <script src="lib/shared.js"></script>
   <script src="options.js"></script>
 </body>
 </html>
