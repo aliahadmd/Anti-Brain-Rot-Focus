@@ -5,7 +5,8 @@ const { loadScripts, evaluate } = require('./harness');
 const ctx = loadScripts(['lib/shared.js', 'lib/engine.js']);
 const api = evaluate(ctx, `({
   reconcileRewardState, applyRewardPenalty, createDefaultRewardState, recordBlockedVisit,
-  pruneDailyStats, findMatchingBlockedSite, normalizeSiteInput, REWARD_PENALTY_DAYS
+  pruneDailyStats, findMatchingBlockedSite, normalizeSiteInput, REWARD_PENALTY_DAYS,
+  normalizeRedirectUrl, getRedirectTarget
 })`);
 
 const at = (dateKey, time = '12:00:00') => new Date(`${dateKey}T${time}`);
@@ -121,4 +122,21 @@ test('normalizeSiteInput reports paths instead of silently dropping them', () =>
   assert.deepEqual({ ...api.normalizeSiteInput('https://www.YouTube.com/') }, { site: 'youtube.com', hasPath: false });
   assert.ok(api.normalizeSiteInput('not a domain').error);
   assert.ok(api.normalizeSiteInput('localhostx').error);
+});
+
+test('normalizeRedirectUrl accepts web addresses only', () => {
+  assert.deepEqual({ ...api.normalizeRedirectUrl('notion.so/inbox') }, { url: 'https://notion.so/inbox', host: 'notion.so' });
+  assert.deepEqual({ ...api.normalizeRedirectUrl(' http://Example.com ') }, { url: 'http://example.com/', host: 'example.com' });
+  assert.ok(api.normalizeRedirectUrl('').error);
+  assert.ok(api.normalizeRedirectUrl('javascript:alert(1)').error);
+  assert.ok(api.normalizeRedirectUrl('ftp://example.com').error);
+  assert.ok(api.normalizeRedirectUrl('intranet').error);
+});
+
+test('getRedirectTarget falls back to the block page when off, invalid, or blocked', () => {
+  const blockedSites = ['youtube.com'];
+  assert.equal(api.getRedirectTarget({ redirectEnabled: true, redirectUrl: 'khanacademy.org', blockedSites }), 'https://khanacademy.org/');
+  assert.equal(api.getRedirectTarget({ redirectEnabled: false, redirectUrl: 'khanacademy.org', blockedSites }), null);
+  assert.equal(api.getRedirectTarget({ redirectEnabled: true, redirectUrl: '', blockedSites }), null);
+  assert.equal(api.getRedirectTarget({ redirectEnabled: true, redirectUrl: 'https://m.youtube.com/', blockedSites }), null);
 });

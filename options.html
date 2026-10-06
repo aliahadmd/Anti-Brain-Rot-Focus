@@ -133,6 +133,7 @@
             <li>Review Top Distractions when you want to tighten your blocklist.</li>
             <li>Export your blocklist before moving to another browser profile.</li>
             <li>Use Clear Pause only when you are ready to return to Focus Mode.</li>
+            <li>Turn on Redirect in Settings to land on a useful website instead of the block page.</li>
             <li>Removing a site asks three times so accidental removals are less likely.</li>
           </ul>
         </section>
@@ -311,6 +312,29 @@
               <button id="saveTextBtn" class="primary-btn" type="button">Save Message</button>
               <span id="saveStatus" class="feedback" aria-live="polite"></span>
             </div>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-header">
+            <h2>Redirect Blocked Sites</h2>
+          </div>
+          <p class="muted-copy">Send blocked visits to a website you choose, like your notes or a course, instead of showing the block page. Visits still count in your stats. To pause, use the toolbar popup.</p>
+          <div class="control-row redirect-toggle-row">
+            <label class="switch">
+              <input type="checkbox" id="redirectToggle">
+              <span class="switch-track" aria-hidden="true"></span>
+              <span>Redirect instead of showing the block page</span>
+            </label>
+          </div>
+          <div class="form-group">
+            <label for="redirectUrl">Website</label>
+            <div class="add-site">
+              <input type="text" id="redirectUrl" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://example.com">
+              <button id="saveRedirectBtn" class="primary-btn" type="button">Save</button>
+            </div>
+            <p id="redirectWarning" class="feedback error" hidden></p>
+            <p id="redirectStatus" class="feedback" aria-live="polite"></p>
           </div>
         </section>
 

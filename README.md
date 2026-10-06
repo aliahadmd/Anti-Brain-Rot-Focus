@@ -5,6 +5,7 @@ A Manifest V3 browser extension for Chrome and Edge that blocks distracting site
 ## How it works
 
 - **Blocking.** A `declarativeNetRequest` rule stops blocked domains (and their subdomains) from loading. `webNavigation` then swaps the tab to `blocked.html`. When blocking turns on, a pause ends, or a site is added, tabs already open on blocked sites are redirected too.
+- **Redirect mode.** Optionally, blocked visits go to a website you choose instead of the block page (Settings → Redirect Blocked Sites). A target that is itself blocked, or a tab that keeps bouncing back to blocked sites, falls back to the block page.
 - **Focus days.** A day counts once it has passed if the browser ran that day with Focus on, at least one site blocked, and no pause, disable, or site removal.
 - **Penalties.** Pausing, disabling Focus, or removing a site each cost 3 progress days. Sites added today can be removed for free. Medals already earned are never taken away.
 - **Medals.** A regular medal every 10 progress days and a prestige medal every 30.

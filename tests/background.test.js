@@ -151,3 +151,71 @@ test('unknown messages are not answered', async () => {
   const bg = await loadBackground();
   assert.equal(await bg.send({ type: 'NOPE' }), undefined);
 });
+
+const REDIRECT_SEED = { redirectEnabled: true, redirectUrl: 'https://khanacademy.org/' };
+
+test('redirect mode sends blocked visits to the chosen website and still counts them', async () => {
+  const bg = await loadBackground({ seed: REDIRECT_SEED });
+
+  await bg.navigate(3, 'https://www.youtube.com/watch?v=1');
+
+  assert.equal(bg.chrome.state.tabUpdates.at(-1).url, 'https://khanacademy.org/');
+  assert.equal(bg.store.stats['youtube.com'], 1);
+  assert.equal(bg.chrome.storage.session.store['returnUrl:3'], undefined, 'no return URL without a block page');
+});
+
+test('a redirect website that is itself blocked falls back to the block page', async () => {
+  const bg = await loadBackground({ seed: { redirectEnabled: true, redirectUrl: 'https://m.youtube.com/' } });
+
+  await bg.navigate(3, 'https://reddit.com/');
+
+  assert.equal(bg.chrome.state.tabUpdates.at(-1).url, `${BLOCK_PAGE}?target=reddit.com`);
+});
+
+test('the blocked-load backstop does not override an in-flight redirect', async () => {
+  const bg = await loadBackground({ seed: REDIRECT_SEED });
+
+  await bg.navigate(3, 'https://youtube.com/');
+  bg.chrome.webNavigation.onErrorOccurred.fire({ tabId: 3, url: 'https://youtube.com/', frameId: 0, error: 'net::ERR_BLOCKED_BY_CLIENT' });
+  await bg.settle();
+
+  assert.equal(bg.chrome.state.tabUpdates.length, 1);
+  assert.equal(bg.chrome.state.tabUpdates[0].url, 'https://khanacademy.org/');
+});
+
+test('a blocked load that bounced off the redirect website gets the block page', async () => {
+  const bg = await loadBackground({ seed: REDIRECT_SEED });
+
+  await bg.navigate(3, 'https://youtube.com/');
+  // The redirect website itself server-redirects to a blocked site.
+  bg.chrome.webNavigation.onErrorOccurred.fire({ tabId: 3, url: 'https://reddit.com/', frameId: 0, error: 'net::ERR_BLOCKED_BY_CLIENT' });
+  await bg.settle();
+
+  assert.equal(bg.chrome.state.tabUpdates.at(-1).url, `${BLOCK_PAGE}?target=reddit.com`);
+});
+
+test('a tab that keeps landing on blocked sites stops being redirected to the website', async () => {
+  const bg = await loadBackground({ seed: REDIRECT_SEED });
+
+  for (let i = 0; i < 4; i += 1) {
+    await bg.navigate(3, 'https://youtube.com/');
+  }
+
+  const destinations = bg.chrome.state.tabUpdates.map((update) => update.url);
+  assert.deepEqual(destinations.slice(0, 3), Array(3).fill('https://khanacademy.org/'));
+  assert.equal(destinations[3], `${BLOCK_PAGE}?target=youtube.com`);
+
+  bg.clock.advanceMinutes(1);
+  await bg.navigate(3, 'https://youtube.com/');
+  assert.equal(bg.chrome.state.tabUpdates.at(-1).url, 'https://khanacademy.org/', 'guard resets after the window');
+});
+
+test('sweeps use the redirect website too', async () => {
+  const bg = await loadBackground({ seed: REDIRECT_SEED, tabs: [{ id: 5, url: 'https://example.org/' }] });
+
+  await bg.send({ type: 'PAUSE_FOCUS', minutes: 5 });
+  bg.chrome.state.tabs[0].url = 'https://reddit.com/r/all';
+  await bg.send({ type: 'RESUME_FOCUS' });
+
+  assert.equal(bg.chrome.state.tabs[0].url, 'https://khanacademy.org/');
+});

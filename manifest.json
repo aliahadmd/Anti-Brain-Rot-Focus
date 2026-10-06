@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Anti-Brain Rot Focus",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Block distracting domains, earn focus medals, and review local analytics.",
   "minimum_chrome_version": "116",
   "permissions": [

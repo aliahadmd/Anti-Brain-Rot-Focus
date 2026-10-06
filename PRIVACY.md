@@ -48,6 +48,7 @@ The extension stores local settings and reward data such as:
 - Whether Focus Mode is enabled.
 - Whether Focus Mode is paused and when the pause ends.
 - Your custom motivational message.
+- An optional website to send blocked visits to, and whether that redirect is on.
 - Reward progress days.
 - Penalty events (pausing, disabling Focus, or removing a blocked site), including the domain removed.
 - The date each blocked domain was added.
@@ -61,7 +62,7 @@ This data is used only to provide the extension's focus, analytics, and reward f
 Anti-Brain Rot Focus uses local data to:
 
 - Block distracting domains selected by the user.
-- Redirect blocked visits to the extension's local focus page.
+- Redirect blocked visits to the extension's local focus page, or to a website you choose.
 - Show local dashboard analytics.
 - Manage import and export of blocklists.
 - Track reward progress and earned medals.
@@ -73,6 +74,8 @@ Anti-Brain Rot Focus uses local data to:
 Anti-Brain Rot Focus does not sell, rent, share, or transfer user data to third parties.
 
 The extension does not send your blocklist, browsing activity, analytics, reward data, or settings to any external server.
+
+If you turn on redirecting, blocked visits open the website you chose, just as if you had typed its address. The extension does not tell that website which site was blocked or send it any other data.
 
 ## Remote Code
 

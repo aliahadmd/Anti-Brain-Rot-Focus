@@ -7,7 +7,9 @@ const DASHBOARD_KEYS = [
   STORAGE.blockedSites,
   STORAGE.siteAddedOn,
   STORAGE.isEnabled,
-  STORAGE.pausedUntil
+  STORAGE.pausedUntil,
+  STORAGE.redirectEnabled,
+  STORAGE.redirectUrl
 ];
 const DELETE_QUOTES = [
   'The easiest click is not always the kindest one to your future self.',
@@ -175,6 +177,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const motivationTextEl = document.getElementById('motivationText');
   const saveTextBtn = document.getElementById('saveTextBtn');
   const saveStatus = document.getElementById('saveStatus');
+  const redirectToggle = document.getElementById('redirectToggle');
+  const redirectUrlEl = document.getElementById('redirectUrl');
+  const saveRedirectBtn = document.getElementById('saveRedirectBtn');
+  const redirectWarning = document.getElementById('redirectWarning');
+  const redirectStatus = document.getElementById('redirectStatus');
   const newSiteInput = document.getElementById('newSite');
   const addSiteBtn = document.getElementById('addSiteBtn');
   const siteFeedback = document.getElementById('siteFeedback');
@@ -215,13 +222,16 @@ document.addEventListener('DOMContentLoaded', () => {
     blockedSites: [],
     siteAddedOn: {},
     isEnabled: true,
-    pausedUntil: null
+    pausedUntil: null,
+    redirectEnabled: false,
+    redirectUrl: ''
   };
   let siteCounts = {};
   let pendingDeleteSite = null;
   let deleteStep = 0;
   let focusBeforeDialog = null;
   let motivationDirty = false;
+  let redirectUrlDirty = false;
   let loadScheduled = false;
 
   function showMessage(element, message, isError = false) {
@@ -614,6 +624,55 @@ document.addEventListener('DOMContentLoaded', () => {
     motivationTextEl.value = text || DEFAULT_MOTIVATION;
   }
 
+  function renderRedirect(data) {
+    redirectToggle.checked = data.redirectEnabled === true;
+
+    if (!redirectUrlDirty && document.activeElement !== redirectUrlEl) {
+      redirectUrlEl.value = data.redirectUrl || '';
+    }
+
+    const blockedTarget = data.redirectEnabled === true && !getRedirectTarget(data);
+    const { host } = normalizeRedirectUrl(data.redirectUrl);
+
+    redirectWarning.hidden = !blockedTarget;
+    redirectWarning.textContent = blockedTarget
+      ? `${host || 'That website'} is on your blocklist, so blocked visits show the block page instead.`
+      : '';
+  }
+
+  function saveRedirectSettings() {
+    const enabled = redirectToggle.checked;
+    const raw = redirectUrlEl.value.trim();
+
+    if (!enabled && !raw) {
+      chrome.storage.local.set({ [STORAGE.redirectEnabled]: false, [STORAGE.redirectUrl]: '' }, () => {
+        redirectUrlDirty = false;
+        showMessage(redirectStatus, 'Saved. Blocked sites show the block page.');
+      });
+      return;
+    }
+
+    const result = normalizeRedirectUrl(raw);
+    const blockedSite = result.host ? findMatchingBlockedSite(result.host, currentData.blockedSites) : null;
+    const error = result.error || (blockedSite
+      ? `${result.host} is on your blocklist. Choose a website that isn't blocked.`
+      : null);
+
+    if (error) {
+      redirectToggle.checked = currentData.redirectEnabled === true;
+      showMessage(redirectStatus, error, true);
+      return;
+    }
+
+    chrome.storage.local.set({ [STORAGE.redirectEnabled]: enabled, [STORAGE.redirectUrl]: result.url }, () => {
+      redirectUrlDirty = false;
+      redirectUrlEl.value = result.url;
+      showMessage(redirectStatus, enabled
+        ? `Blocked sites now redirect to ${result.url}`
+        : 'Saved. Blocked sites show the block page.');
+    });
+  }
+
   function renderDashboard(data) {
     const now = new Date();
     const stats = data.stats || { total: 0 };
@@ -630,6 +689,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     renderAnalyticsStatus(data, dailyStats, now);
     renderMotivation(data.motivationalText);
+    renderRedirect(data);
     renderFocusState(data);
     renderTopDistractions();
     renderDailyChart(dailyStats, now);
@@ -859,6 +919,31 @@ document.addEventListener('DOMContentLoaded', () => {
       showMessage(saveStatus, 'Saved.');
     });
   });
+
+  redirectUrlEl.addEventListener('input', () => {
+    redirectUrlDirty = true;
+  });
+
+  redirectUrlEl.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      saveRedirectSettings();
+    }
+  });
+
+  redirectToggle.addEventListener('change', () => {
+    // Turning redirect off never needs a valid address.
+    if (!redirectToggle.checked) {
+      chrome.storage.local.set({ [STORAGE.redirectEnabled]: false }, () => {
+        showMessage(redirectStatus, 'Blocked sites show the block page.');
+      });
+      return;
+    }
+
+    saveRedirectSettings();
+  });
+
+  saveRedirectBtn.addEventListener('click', saveRedirectSettings);
 
   addSiteBtn.addEventListener('click', addSiteFromInput);
 

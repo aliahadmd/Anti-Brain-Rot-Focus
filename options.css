@@ -1119,3 +1119,11 @@ select:focus {
     grid-template-columns: 1fr;
   }
 }
+
+.redirect-toggle-row {
+  margin: 14px 0 16px;
+}
+
+.feedback[hidden] {
+  display: none;
+}

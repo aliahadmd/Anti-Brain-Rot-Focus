@@ -6,6 +6,20 @@ importScripts('lib/shared.js', 'lib/engine.js');
 
 const BLOCK_RULE_ID = 1;
 const RETURN_URL_PREFIX = 'returnUrl:';
+const BLOCKING_KEYS = [
+  STORAGE.blockedSites,
+  STORAGE.isEnabled,
+  STORAGE.pausedUntil,
+  STORAGE.redirectEnabled,
+  STORAGE.redirectUrl
+];
+// A tab sent to the redirect website this many times within the window keeps
+// landing on blocked sites, so it gets the block page instead of looping.
+const REDIRECT_LOOP_LIMIT = 3;
+const REDIRECT_LOOP_WINDOW_MS = 10000;
+// How long a blocked-load error for a URL we already redirected away from is
+// treated as the tail of that same navigation.
+const STALE_ERROR_WINDOW_MS = 5000;
 
 let storageQueue = Promise.resolve();
 let lastReconciledDateKey = null;
@@ -295,38 +309,60 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // Blocking
 //
 // A declarativeNetRequest block rule stops blocked hosts from loading at all,
-// including prerendered pages. webNavigation then swaps the tab to the
-// friendly block page, and a sweep catches tabs that were already open when
-// protection was switched on, a pause ended, or a site was added.
+// including prerendered pages. webNavigation then swaps the tab to the block
+// page (or the user's redirect website), and a sweep catches tabs that were
+// already open when protection was switched on, a pause ended, or a site was
+// added.
 
-async function redirectToBlockPage(tabId, url, hostname) {
-  const blockPageUrl = `${chrome.runtime.getURL('blocked.html')}?target=${encodeURIComponent(normalizeHost(hostname))}`;
+// tabId -> { fromUrl, at, customTimes }
+const tabRedirects = new Map();
 
-  try {
-    // Kept in memory-only session storage so the block page can offer a way
-    // back after a pause without the full URL touching disk or history.
-    await chrome.storage.session.set({ [`${RETURN_URL_PREFIX}${tabId}`]: url });
-  } catch (error) {
-    console.warn('Could not remember the blocked URL:', error);
+async function redirectBlockedTab(tabId, url, hostname, data, { allowCustom = true } = {}) {
+  const now = Date.now();
+  const memory = tabRedirects.get(tabId) || { customTimes: [] };
+  const customTimes = memory.customTimes.filter((time) => now - time < REDIRECT_LOOP_WINDOW_MS);
+  const target = allowCustom ? getRedirectTarget(data) : null;
+  const useCustom = Boolean(target) && customTimes.length < REDIRECT_LOOP_LIMIT;
+  const destination = useCustom
+    ? target
+    : `${chrome.runtime.getURL('blocked.html')}?target=${encodeURIComponent(normalizeHost(hostname))}`;
+
+  tabRedirects.set(tabId, { fromUrl: url, at: now, customTimes: useCustom ? [...customTimes, now] : customTimes });
+
+  if (!useCustom) {
+    try {
+      // Kept in memory-only session storage so the block page can offer a way
+      // back after a pause without the full URL touching disk or history.
+      await chrome.storage.session.set({ [`${RETURN_URL_PREFIX}${tabId}`]: url });
+    } catch (error) {
+      console.warn('Could not remember the blocked URL:', error);
+    }
   }
 
   try {
-    await chrome.tabs.update(tabId, { url: blockPageUrl });
+    await chrome.tabs.update(tabId, { url: destination });
   } catch (error) {
     // The tab may have closed in the meantime.
     console.warn(`Could not redirect tab ${tabId}:`, error.message || error);
   }
 }
 
-async function handleNavigation(tabId, rawUrl, { countVisit }) {
+async function handleNavigation(tabId, rawUrl, { countVisit, isBackstop = false }) {
   if (tabId < 0) return;
 
   const url = parseUrl(rawUrl);
   if (!isWebUrl(url)) return;
 
+  if (isBackstop) {
+    // The rule stopped a navigation we are already redirecting away from;
+    // redirecting again would override where the first redirect is going.
+    const memory = tabRedirects.get(tabId);
+    if (memory && memory.fromUrl === rawUrl && Date.now() - memory.at < STALE_ERROR_WINDOW_MS) return;
+  }
+
   touchToday();
 
-  const data = await chrome.storage.local.get([STORAGE.blockedSites, STORAGE.isEnabled, STORAGE.pausedUntil]);
+  const data = await chrome.storage.local.get(BLOCKING_KEYS);
 
   if (data.pausedUntil && !isFocusPaused(data.pausedUntil)) {
     clearExpiredPause().catch((error) => console.error('Clearing pause failed:', error));
@@ -337,14 +373,16 @@ async function handleNavigation(tabId, rawUrl, { countVisit }) {
   const site = findMatchingBlockedSite(url.hostname, getBlockedSites(data));
   if (!site) return;
 
-  await redirectToBlockPage(tabId, rawUrl, url.hostname);
+  // A blocked load reaching the backstop may have bounced off the redirect
+  // website itself, so it always gets the block page.
+  await redirectBlockedTab(tabId, rawUrl, url.hostname, data, { allowCustom: !isBackstop });
 
   if (countVisit) {
     await recordVisit(site);
   }
 }
 
-async function sweepOpenTabs(blockedSites) {
+async function sweepOpenTabs(blockedSites, data) {
   const siteSet = new Set(blockedSites.map(normalizeHost));
   const tabs = await chrome.tabs.query({});
 
@@ -357,13 +395,13 @@ async function sweepOpenTabs(blockedSites) {
     const url = frame && parseUrl(frame.url);
 
     if (isWebUrl(url) && findMatchingBlockedSite(url.hostname, siteSet)) {
-      await redirectToBlockPage(tab.id, frame.url, url.hostname);
+      await redirectBlockedTab(tab.id, frame.url, url.hostname, data);
     }
   }));
 }
 
 async function syncBlocking() {
-  const data = await chrome.storage.local.get([STORAGE.blockedSites, STORAGE.isEnabled, STORAGE.pausedUntil]);
+  const data = await chrome.storage.local.get(BLOCKING_KEYS);
   const active = isFocusActive(data);
   const domains = active
     ? [...new Set(getBlockedSites(data).map(normalizeHost))].filter((site) => /^[a-z0-9.-]+$/.test(site))
@@ -385,7 +423,7 @@ async function syncBlocking() {
   }
 
   if (domains.length > 0) {
-    await sweepOpenTabs(domains);
+    await sweepOpenTabs(domains, data);
   }
 }
 
@@ -417,11 +455,12 @@ chrome.webNavigation.onErrorOccurred.addListener((details) => {
   // Backstop for loads stopped by the block rule before the redirect landed.
   if (details.frameId !== 0 || details.error !== 'net::ERR_BLOCKED_BY_CLIENT') return;
 
-  handleNavigation(details.tabId, details.url, { countVisit: false })
+  handleNavigation(details.tabId, details.url, { countVisit: false, isBackstop: true })
     .catch((error) => console.error('Blocked-load check failed:', error));
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  tabRedirects.delete(tabId);
   chrome.storage.session.remove(`${RETURN_URL_PREFIX}${tabId}`).catch(() => {});
 });
 
